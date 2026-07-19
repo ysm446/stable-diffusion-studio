@@ -40,6 +40,13 @@ CREATE TABLE IF NOT EXISTS videos (
 CREATE VIRTUAL TABLE IF NOT EXISTS items_fts USING fts5(
     id UNINDEXED, prompt, negative_prompt, caption, tags
 );
+CREATE TABLE IF NOT EXISTS item_embeddings (
+    item_id TEXT PRIMARY KEY,
+    model TEXT DEFAULT '',
+    dim INTEGER DEFAULT 0,
+    text_hash TEXT DEFAULT '',
+    vector BLOB
+);
 """
 
 
@@ -122,6 +129,7 @@ def remove_item(item_id: str, conn: sqlite3.Connection | None = None) -> None:
         conn.execute("DELETE FROM items WHERE id = ?", (item_id,))
         conn.execute("DELETE FROM videos WHERE item_id = ?", (item_id,))
         conn.execute("DELETE FROM items_fts WHERE id = ?", (item_id,))
+        conn.execute("DELETE FROM item_embeddings WHERE item_id = ?", (item_id,))
         conn.commit()
     finally:
         if own:

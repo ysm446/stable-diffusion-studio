@@ -392,6 +392,45 @@ body {
   text-overflow: ellipsis;
 }
 
+/* --------------------------------------------------------------- similar */
+
+.similar-results {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.similar-card {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px;
+  cursor: pointer;
+  background: var(--bg);
+}
+
+.similar-card:hover { border-color: var(--accent); }
+
+.similar-card img {
+  width: 44px;
+  height: 44px;
+  object-fit: cover;
+  border-radius: 4px;
+  background: #111;
+}
+
+.similar-text {
+  flex: 1;
+  font-size: 11px;
+  color: var(--text-dim);
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
 /* -------------------------------------------------------------- controls */
 
 button, .btn-like {

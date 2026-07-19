@@ -15,6 +15,7 @@
         <button type="button" class="topbar-tab" data-mode="sequence">シーケンス</button>
       </div>
       <div class="topbar-actions">
+        <button type="button" id="btn-embed" title="ベクトル検索用の embedding を差分更新する（embedding サーバーを起動します）">Embedding 更新</button>
         <button type="button" id="btn-reindex" title="全フォルダを走査してインデックスを作り直す">インデックス再構築</button>
       </div>
     </header>
@@ -34,6 +35,11 @@
       <section class="pane pane-grid">
         <div class="pane-toolbar">
           <input type="search" id="search" placeholder="検索（選択フォルダ以下）">
+          <select id="search-mode" title="検索方式">
+            <option value="keyword">キーワード</option>
+            <option value="vector">ベクトル</option>
+            <option value="hybrid">ハイブリッド</option>
+          </select>
           <label class="btn-like" title="画像を取り込み">
             取り込み<input type="file" id="import-files" accept=".png,.jpg,.jpeg,.webp" multiple hidden>
           </label>

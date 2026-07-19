@@ -9,7 +9,8 @@ from fastapi import APIRouter, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
-from server.library import folders, index_db, items, paths
+from server.library import embeddings, folders, index_db, items, paths
+from server.streaming import make_sse_response
 
 router = APIRouter(prefix="/api/library")
 
@@ -91,13 +92,37 @@ class ItemMove(BaseModel):
 
 
 @router.get("/items")
-def list_items(folder: str = "", recursive: bool = False, q: str = "") -> dict[str, Any]:
+def list_items(
+    folder: str = "",
+    recursive: bool = False,
+    q: str = "",
+    search_mode: str = "keyword",
+) -> dict[str, Any]:
     folder = _wrap(paths.normalize_rel, folder)
-    if q.strip():
-        rows = index_db.search_items(q.strip(), folder)
+    query = q.strip()
+    if not query:
+        return {"items": index_db.list_items(folder, recursive)}
+
+    note = ""
+    rows: list[dict[str, Any]] = []
+    if search_mode in ("vector", "hybrid"):
+        try:
+            from server.generation import embedding_client
+
+            vector, _model = embedding_client.embed_text(query)
+            if search_mode == "vector":
+                rows = embeddings.search_by_vector(vector, folder, limit=100)
+            else:
+                rows = embeddings.search_hybrid(query, vector, folder, limit=100)
+        except Exception as e:
+            note = f"ベクトル検索が使えないためキーワード検索にフォールバックしました: {e}"
+            rows = index_db.search_items(query, folder)
     else:
-        rows = index_db.list_items(folder, recursive)
-    return {"items": rows}
+        rows = index_db.search_items(query, folder)
+    result: dict[str, Any] = {"items": rows}
+    if note:
+        result["note"] = note
+    return result
 
 
 @router.get("/items/{item_id}")
@@ -179,3 +204,32 @@ def list_all_videos() -> dict[str, Any]:
 def reindex() -> dict[str, int]:
     count = index_db.rebuild()
     return {"count": count}
+
+
+@router.get("/embeddings/status")
+def embeddings_status() -> dict[str, Any]:
+    return embeddings.embedding_status()
+
+
+@router.post("/embeddings/rebuild")
+async def embeddings_rebuild():
+    def worker(send) -> None:
+        try:
+            from server.generation import embedding_client
+
+            send({"type": "status", "content": "embedding サーバーを確認中..."})
+            count = embeddings.rebuild_embeddings(
+                embedding_client.embed_text,
+                lambda text: send({"type": "status", "content": text}),
+            )
+            send({
+                "type": "result",
+                "count": count,
+                "status": f"embedding を更新しました（{count} 件）",
+            })
+        except Exception as e:
+            send({"type": "error", "content": f"embedding 更新エラー: {e}"})
+        finally:
+            send({"type": "done"})
+
+    return make_sse_response(worker)

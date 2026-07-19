@@ -238,9 +238,13 @@ async function loadItems() {
     return;
   }
   const params = new URLSearchParams({ folder: state.folder });
-  if (state.query) params.set("q", state.query);
+  if (state.query) {
+    params.set("q", state.query);
+    params.set("search_mode", $("#search-mode").value);
+  }
   const res = await api(`/api/library/items?${params}`);
   state.items = res.items;
+  if (res.note) setStatus(res.note, true);
   renderGrid();
 }
 
@@ -310,6 +314,12 @@ $("#search").addEventListener("input", (e) => {
     await run(loadItems);
     renderContext();
   }, 300);
+});
+
+$("#search-mode").addEventListener("change", async () => {
+  if (state.query) {
+    await run(loadItems);
+  }
 });
 
 // 取り込み -------------------------------------------------------------------
@@ -507,6 +517,59 @@ function renderFolderContext(el) {
   }
 
   el.appendChild(labeled("Prompt", makeTextarea(g.positive, 5, (v) => (g.positive = v))));
+
+  // ライブラリの類似プロンプト参照（旧 {library_context} 相当）
+  const simBtn = document.createElement("button");
+  simBtn.textContent = "🔍 ライブラリから類似プロンプトを探す";
+  const simResults = document.createElement("div");
+  simResults.className = "similar-results";
+  simBtn.addEventListener("click", async () => {
+    const q = g.positive.trim();
+    if (!q) {
+      setGenStatus("Prompt に検索の手がかりを入力してください", true);
+      return;
+    }
+    simBtn.disabled = true;
+    simResults.innerHTML = '<div class="palette-sub">検索中...</div>';
+    try {
+      const res = await api(`/api/generation/similar?q=${encodeURIComponent(q)}&limit=5`);
+      simResults.innerHTML = "";
+      if (res.items.length === 0) {
+        simResults.innerHTML = '<div class="palette-sub">類似プロンプトが見つかりません</div>';
+      }
+      for (const s of res.items) {
+        const card = document.createElement("div");
+        card.className = "similar-card";
+        const img = document.createElement("img");
+        img.src = `/api/library/file/${s.id}/${s.thumb || "thumb.jpg"}`;
+        const text = document.createElement("div");
+        text.className = "similar-text";
+        text.textContent = s.prompt;
+        text.title = "クリックで Prompt に反映";
+        card.append(img, text);
+        card.addEventListener("click", () => {
+          g.positive = s.prompt;
+          if (s.negative_prompt) g.negative = s.negative_prompt;
+          renderContext();
+        });
+        simResults.appendChild(card);
+      }
+      if (res.mode === "keyword") {
+        const note = document.createElement("div");
+        note.className = "palette-sub";
+        note.textContent = "（キーワード検索。embedding 更新でハイブリッドになります）";
+        simResults.appendChild(note);
+      }
+    } catch (e) {
+      simResults.innerHTML = "";
+      setGenStatus(`類似検索エラー: ${e.message}`, true);
+    } finally {
+      simBtn.disabled = false;
+    }
+  });
+  el.appendChild(simBtn);
+  el.appendChild(simResults);
+
   el.appendChild(labeled("Negative Prompt", makeTextarea(g.negative, 2, (v) => (g.negative = v))));
 
   const row1 = document.createElement("div");
@@ -796,6 +859,38 @@ function renderItemContext(el, item) {
 // ---------------------------------------------------------------------------
 // その他
 // ---------------------------------------------------------------------------
+
+$("#btn-embed").addEventListener("click", async () => {
+  const btn = $("#btn-embed");
+  btn.disabled = true;
+  try {
+    const res = await fetch("/api/library/embeddings/rebuild", { method: "POST" });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      let idx;
+      while ((idx = buffer.indexOf("\n\n")) >= 0) {
+        const chunk = buffer.slice(0, idx);
+        buffer = buffer.slice(idx + 2);
+        const line = chunk.split("\n").find((l) => l.startsWith("data: "));
+        if (!line) continue;
+        const ev = JSON.parse(line.slice(6));
+        if (ev.type === "status") setStatus(ev.content);
+        else if (ev.type === "result") setStatus(ev.status);
+        else if (ev.type === "error") setStatus(ev.content, true);
+      }
+    }
+  } catch (e) {
+    setStatus(`embedding 更新エラー: ${e.message}`, true);
+  } finally {
+    btn.disabled = false;
+  }
+});
 
 // モード切替（ライブラリ / シーケンス）
 for (const tab of document.querySelectorAll(".topbar-tab")) {

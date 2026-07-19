@@ -82,3 +82,38 @@ async def generate_video(request: Request):
 def interrupt() -> dict[str, bool]:
     comfy_client.interrupt()
     return {"ok": True}
+
+
+@router.get("/similar")
+def similar_prompts(q: str, limit: int = 5) -> dict[str, Any]:
+    """ライブラリから類似プロンプトを返す（旧 {library_context} 相当）。
+
+    embedding サーバーが使えればハイブリッド検索、なければ FTS5 のみ。
+    """
+    from server.library import embeddings, index_db
+
+    query = q.strip()
+    if not query:
+        return {"items": [], "mode": "none"}
+    mode = "hybrid"
+    try:
+        from server.generation import embedding_client
+
+        vector, _model = embedding_client.embed_text(query)
+        rows = embeddings.search_hybrid(query, vector, limit=limit)
+    except Exception:
+        mode = "keyword"
+        rows = index_db.search_items(query, "")[:limit]
+    items = [
+        {
+            "id": r["id"],
+            "folder": r.get("folder", ""),
+            "thumb": r.get("thumb"),
+            "prompt": r.get("prompt", ""),
+            "negative_prompt": r.get("negative_prompt", ""),
+            "caption": r.get("caption", ""),
+        }
+        for r in rows
+        if (r.get("prompt") or "").strip()
+    ]
+    return {"items": items, "mode": mode}
