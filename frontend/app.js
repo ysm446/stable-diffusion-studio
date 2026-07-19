@@ -860,6 +860,40 @@ function renderItemContext(el, item) {
 // その他
 // ---------------------------------------------------------------------------
 
+// ライブラリルートの表示・変更 ----------------------------------------------
+
+async function loadRoot() {
+  try {
+    const res = await api("/api/library/root");
+    $("#root-path").textContent = res.root;
+    $("#root-path").title = `ライブラリの保存先: ${res.root}`;
+    return res;
+  } catch {
+    return null;
+  }
+}
+
+$("#btn-root").addEventListener("click", async (e) => {
+  const current = await loadRoot();
+  let path;
+  if (e.shiftKey) {
+    if (!confirm(`ライブラリの保存先を既定（${current?.default || "data/library"}）に戻しますか？`)) return;
+    path = "";
+  } else if (window.electronAPI?.selectFolder) {
+    path = await window.electronAPI.selectFolder(current?.root);
+    if (!path) return; // キャンセル
+  } else {
+    path = prompt("ライブラリの保存先フォルダ（絶対パス）:", current?.root || "");
+    if (path === null) return;
+  }
+  await run(async () => {
+    const res = await apiJson("/api/library/root", "POST", { path });
+    await loadRoot();
+    await selectFolder("");
+    setStatus(`ライブラリの保存先を変更しました: ${res.root}（${res.indexed} 件をインデックス）`);
+  });
+});
+
 $("#btn-embed").addEventListener("click", async () => {
   const btn = $("#btn-embed");
   btn.disabled = true;
@@ -927,6 +961,7 @@ run(async () => {
     api("/api/settings").catch(() => ({})),
     api("/api/generation/options").catch(() => null),
   ]);
+  loadRoot();
   if (options) state.options = options;
   if (saved.gen_image) Object.assign(state.genImage, saved.gen_image);
   if (saved.gen_video) Object.assign(state.genVideo, saved.gen_video);

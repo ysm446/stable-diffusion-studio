@@ -9,6 +9,7 @@ from fastapi import APIRouter, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
+from server import settings
 from server.library import embeddings, folders, index_db, items, paths
 from server.streaming import make_sse_response
 
@@ -22,6 +23,45 @@ def _wrap(fn, *args, **kwargs):
         raise HTTPException(status_code=404, detail=str(e))
     except (items.LibraryError, folders.FolderError, ValueError) as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+# ---------------------------------------------------------------------------
+# ライブラリルート
+# ---------------------------------------------------------------------------
+
+
+class RootUpdate(BaseModel):
+    path: str = ""  # 空文字で既定（data/library）に戻す
+
+
+@router.get("/root")
+def get_root() -> dict[str, Any]:
+    configured = str(settings.load().get("library_root") or "").strip()
+    return {
+        "root": str(paths.get_library_root()),
+        "configured": configured,
+        "default": str(paths.DEFAULT_LIBRARY_DIR),
+    }
+
+
+@router.post("/root")
+def set_root(body: RootUpdate) -> dict[str, Any]:
+    raw = body.path.strip()
+    if raw:
+        p = Path(raw).expanduser()
+        if not p.is_absolute():
+            raise HTTPException(status_code=400, detail="絶対パスを指定してください")
+        if p.exists() and not p.is_dir():
+            raise HTTPException(status_code=400, detail="フォルダではありません")
+        try:
+            p.mkdir(parents=True, exist_ok=True)
+        except OSError as e:
+            raise HTTPException(status_code=400, detail=f"フォルダを作成できません: {e}")
+        settings.update({"library_root": str(p)})
+    else:
+        settings.update({"library_root": ""})
+    count = index_db.rebuild()
+    return {"root": str(paths.get_library_root()), "indexed": count}
 
 
 # ---------------------------------------------------------------------------
