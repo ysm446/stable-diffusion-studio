@@ -1,24 +1,56 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-  <meta charset="utf-8">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Stable Diffusion Studio</title>
-  <style>
-    body {
-      margin: 0;
-      display: grid;
-      place-items: center;
-      min-height: 100vh;
-      background: #1c1c1c;
-      color: #ddd;
-      font-family: "Segoe UI", sans-serif;
-    }
-  </style>
+  <link rel="icon" type="image/png" href="/assets/app_icon.png">
+  <link rel="stylesheet" href="/frontend/style.css">
 </head>
 <body>
-  <div>
-    <h1>Stable Diffusion Studio</h1>
-    <p>ライブラリ UI（3ペイン）は実装中です。API は <code>/docs</code> で確認できます。</p>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="topbar-tabs">
+        <button type="button" class="topbar-tab is-active" data-mode="library">ライブラリ</button>
+        <button type="button" class="topbar-tab" data-mode="sequence" disabled title="マイルストーン6で実装">シーケンス</button>
+      </div>
+      <div class="topbar-actions">
+        <button type="button" id="btn-reindex" title="全フォルダを走査してインデックスを作り直す">インデックス再構築</button>
+      </div>
+    </header>
+
+    <main class="panes">
+      <!-- 左: フォルダツリー -->
+      <aside class="pane pane-tree">
+        <div class="pane-toolbar">
+          <button type="button" id="btn-folder-new" title="選択フォルダ内に新規フォルダ">＋</button>
+          <button type="button" id="btn-folder-rename" title="フォルダ名を変更">✎</button>
+          <button type="button" id="btn-folder-delete" title="フォルダを削除">🗑</button>
+        </div>
+        <div id="tree" class="tree"></div>
+      </aside>
+
+      <!-- 中央: サムネイルグリッド -->
+      <section class="pane pane-grid">
+        <div class="pane-toolbar">
+          <input type="search" id="search" placeholder="検索（選択フォルダ以下）">
+          <label class="btn-like" title="画像を取り込み">
+            取り込み<input type="file" id="import-files" accept=".png,.jpg,.jpeg,.webp" multiple hidden>
+          </label>
+        </div>
+        <div id="grid" class="grid" tabindex="0">
+          <p class="grid-empty">フォルダを選択してください</p>
+        </div>
+      </section>
+
+      <!-- 右: コンテキストパネル -->
+      <aside class="pane pane-context">
+        <div id="context" class="context"></div>
+      </aside>
+    </main>
+
+    <footer class="statusbar"><span id="status"></span></footer>
   </div>
+  <script type="module" src="/frontend/app.js"></script>
 </body>
 </html>
