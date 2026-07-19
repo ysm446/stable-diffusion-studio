@@ -183,6 +183,24 @@ def search_items(query: str, folder: str = "") -> list[dict[str, Any]]:
         conn.close()
 
 
+def list_all_videos() -> list[dict[str, Any]]:
+    """全動画をアイテム情報付きで返す（シーケンスのクリップパレット用）。"""
+    conn = connect()
+    try:
+        rows = conn.execute(
+            """
+            SELECT videos.item_id, videos.file, videos.prompt, videos.workflow,
+                   videos.created_at, items.folder, items.thumb,
+                   items.prompt AS item_prompt
+            FROM videos JOIN items ON items.id = videos.item_id
+            ORDER BY videos.created_at DESC
+            """
+        ).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
 def move_folder_prefix(old: str, new: str) -> None:
     """フォルダのリネーム / 移動に合わせて items.folder を付け替える。"""
     conn = connect()

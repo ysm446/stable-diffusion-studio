@@ -12,14 +12,14 @@
     <header class="topbar">
       <div class="topbar-tabs">
         <button type="button" class="topbar-tab is-active" data-mode="library">ライブラリ</button>
-        <button type="button" class="topbar-tab" data-mode="sequence" disabled title="マイルストーン6で実装">シーケンス</button>
+        <button type="button" class="topbar-tab" data-mode="sequence">シーケンス</button>
       </div>
       <div class="topbar-actions">
         <button type="button" id="btn-reindex" title="全フォルダを走査してインデックスを作り直す">インデックス再構築</button>
       </div>
     </header>
 
-    <main class="panes">
+    <main class="panes" id="view-library">
       <!-- 左: フォルダツリー -->
       <aside class="pane pane-tree">
         <div class="pane-toolbar">
@@ -46,6 +46,40 @@
       <!-- 右: コンテキストパネル -->
       <aside class="pane pane-context">
         <div id="context" class="context"></div>
+      </aside>
+    </main>
+
+    <!-- シーケンスモード -->
+    <main class="panes panes-sequence" id="view-sequence" hidden>
+      <!-- 左: シーケンス一覧 -->
+      <aside class="pane pane-tree">
+        <div class="pane-toolbar">
+          <button type="button" id="btn-seq-new" title="新しいシーケンス">＋</button>
+          <button type="button" id="btn-seq-rename" title="名前を変更">✎</button>
+          <button type="button" id="btn-seq-delete" title="シーケンスを削除">🗑</button>
+        </div>
+        <div id="seq-list" class="tree"></div>
+      </aside>
+
+      <!-- 中央: プレビュー + クリップ並び -->
+      <section class="pane pane-seq-editor">
+        <div class="pane-toolbar">
+          <button type="button" id="btn-seq-play">▶ 連続再生</button>
+          <button type="button" id="btn-seq-export" class="primary">連結書き出し</button>
+          <span id="seq-status" class="gen-status"></span>
+        </div>
+        <div class="seq-player-wrap">
+          <video id="seq-player" controls></video>
+        </div>
+        <div id="seq-clips" class="seq-clips"></div>
+      </section>
+
+      <!-- 右: クリップパレット -->
+      <aside class="pane pane-context">
+        <div class="pane-toolbar">
+          <input type="search" id="seq-palette-search" placeholder="クリップを検索">
+        </div>
+        <div id="seq-palette" class="seq-palette"></div>
       </aside>
     </main>
 

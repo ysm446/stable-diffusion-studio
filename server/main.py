@@ -18,6 +18,7 @@ from server import settings
 from server.generation import comfy_client, comfy_process, forge_client, sd_process
 from server.routes.generation import router as generation_router
 from server.routes.library import router as library_router
+from server.routes.sequences import router as sequences_router
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 FRONTEND_DIR = BASE_DIR / "frontend"
@@ -64,6 +65,7 @@ def put_settings(body: dict):
 
 app.include_router(library_router)
 app.include_router(generation_router)
+app.include_router(sequences_router)
 
 
 @app.on_event("startup")

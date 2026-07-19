@@ -3,6 +3,8 @@
  * 左: フォルダツリー / 中央: サムネイルグリッド / 右: コンテキストパネル
  */
 
+import { initSequenceView, activateSequenceView } from "/frontend/sequence.js";
+
 const state = {
   tree: null,
   folder: null, // 選択中フォルダ rel（"" はルート、null は未選択）
@@ -795,6 +797,21 @@ function renderItemContext(el, item) {
 // その他
 // ---------------------------------------------------------------------------
 
+// モード切替（ライブラリ / シーケンス）
+for (const tab of document.querySelectorAll(".topbar-tab")) {
+  tab.addEventListener("click", async () => {
+    if (tab.classList.contains("is-active")) return;
+    document.querySelectorAll(".topbar-tab").forEach((t) => t.classList.remove("is-active"));
+    tab.classList.add("is-active");
+    const isSeq = tab.dataset.mode === "sequence";
+    $("#view-library").hidden = isSeq;
+    $("#view-sequence").hidden = !isSeq;
+    if (isSeq) await run(activateSequenceView);
+  });
+}
+
+initSequenceView();
+
 $("#btn-reindex").addEventListener("click", async () => {
   await run(async () => {
     const res = await api("/api/library/reindex", { method: "POST" });
@@ -829,5 +846,8 @@ run(async () => {
       updateHash();
       await renderContext();
     }
+  }
+  if (p.get("mode") === "sequence") {
+    document.querySelector('.topbar-tab[data-mode="sequence"]').click();
   }
 });

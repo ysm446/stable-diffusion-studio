@@ -170,6 +170,11 @@ def get_file(item_id: str, name: str):
     return FileResponse(str(target))
 
 
+@router.get("/videos")
+def list_all_videos() -> dict[str, Any]:
+    return {"videos": index_db.list_all_videos()}
+
+
 @router.post("/reindex")
 def reindex() -> dict[str, int]:
     count = index_db.rebuild()
