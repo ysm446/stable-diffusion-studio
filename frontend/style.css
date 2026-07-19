@@ -276,7 +276,32 @@ button:hover, .btn-like:hover { background: var(--bg-active); }
 button:disabled { opacity: 0.4; cursor: default; }
 button.danger { color: var(--danger); }
 
-input[type="search"], input[type="text"], textarea {
+button.primary {
+  background: var(--bg-active);
+  border-color: var(--accent);
+  color: var(--accent);
+  padding: 8px 10px;
+}
+
+.gen-status {
+  min-height: 18px;
+  color: var(--text-dim);
+  font-size: 12px;
+  white-space: pre-wrap;
+}
+
+.gen-status.error { color: var(--danger); }
+
+select {
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 12px;
+}
+
+input[type="search"], input[type="text"], input[type="number"], textarea {
   background: var(--bg);
   color: var(--text);
   border: 1px solid var(--border);

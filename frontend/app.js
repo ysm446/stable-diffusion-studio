@@ -9,6 +9,22 @@ const state = {
   items: [],
   selectedId: null,
   query: "",
+  videoPanel: false, // 画像選択中に動画生成パネルを表示するか
+  genBusy: false,
+  options: { backends: [], forge_samplers: [], image_workflows: [], video_workflows: [] },
+  genImage: {
+    backend: "WebUI Forge",
+    positive: "",
+    negative: "",
+    steps: 28,
+    cfg: 7.0,
+    sampler: "Euler a",
+    width: 1024,
+    height: 1024,
+    seed: -1,
+    workflow: "",
+  },
+  genVideo: { prompt: "", workflow: "", width: "", height: "", frames: "", seed: -1 },
 };
 
 const $ = (sel) => document.querySelector(sel);
@@ -127,12 +143,22 @@ function setupFolderDrop(row, rel) {
   });
 }
 
+function updateHash() {
+  const p = new URLSearchParams();
+  if (state.folder) p.set("folder", state.folder);
+  if (state.selectedId) p.set("item", state.selectedId);
+  if (state.videoPanel) p.set("video", "1");
+  const next = p.toString();
+  if (location.hash.slice(1) !== next) location.hash = next;
+}
+
 async function selectFolder(rel) {
   state.folder = rel;
   state.selectedId = null;
+  state.videoPanel = false;
   state.query = "";
   $("#search").value = "";
-  location.hash = rel ? `folder=${encodeURIComponent(rel)}` : "";
+  updateHash();
   renderTree();
   await loadItems();
   renderContext();
@@ -265,6 +291,8 @@ function renderGrid() {
 
 async function selectItem(itemId) {
   state.selectedId = itemId;
+  state.videoPanel = false;
+  updateHash();
   renderGrid();
   await renderContext();
 }
@@ -333,7 +361,8 @@ async function renderContext() {
   if (state.selectedId) {
     const item = await run(() => api(`/api/library/items/${state.selectedId}`));
     if (item) {
-      renderItemContext(el, item);
+      if (state.videoPanel) renderVideoGenContext(el, item);
+      else renderItemContext(el, item);
       return;
     }
     state.selectedId = null;
@@ -353,19 +382,283 @@ function field(labelText, valueText) {
   return div;
 }
 
+// フォーム部品ヘルパー -------------------------------------------------------
+
+function labeled(labelText, input) {
+  const div = document.createElement("div");
+  div.className = "field";
+  const label = document.createElement("label");
+  label.textContent = labelText;
+  input.style.width = "100%";
+  div.append(label, input);
+  return div;
+}
+
+function makeInput(type, value, onChange) {
+  const input = document.createElement("input");
+  input.type = type;
+  input.value = value ?? "";
+  input.addEventListener("change", () => onChange(input.value));
+  return input;
+}
+
+function makeTextarea(value, rows, onChange) {
+  const ta = document.createElement("textarea");
+  ta.rows = rows;
+  ta.value = value ?? "";
+  ta.addEventListener("change", () => onChange(ta.value));
+  return ta;
+}
+
+function makeSelect(choices, value, onChange) {
+  const sel = document.createElement("select");
+  for (const c of choices) {
+    const opt = document.createElement("option");
+    opt.value = c;
+    opt.textContent = c;
+    sel.appendChild(opt);
+  }
+  if (value && choices.includes(value)) sel.value = value;
+  sel.addEventListener("change", () => onChange(sel.value));
+  return sel;
+}
+
+function genStatusLine() {
+  const line = document.createElement("div");
+  line.className = "gen-status";
+  line.id = "gen-status";
+  return line;
+}
+
+function setGenStatus(text, isError = false) {
+  const el = document.getElementById("gen-status");
+  if (el) {
+    el.textContent = text;
+    el.classList.toggle("error", isError);
+  }
+}
+
+// SSE（POST）ストリームを読み、イベントごとにコールバックする
+async function streamGenerate(url, body, onEvent) {
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    let idx;
+    while ((idx = buffer.indexOf("\n\n")) >= 0) {
+      const chunk = buffer.slice(0, idx);
+      buffer = buffer.slice(idx + 2);
+      const line = chunk.split("\n").find((l) => l.startsWith("data: "));
+      if (line) onEvent(JSON.parse(line.slice(6)));
+    }
+  }
+}
+
+async function saveGenSettings() {
+  try {
+    await apiJson("/api/settings", "PUT", {
+      gen_image: state.genImage,
+      gen_video: state.genVideo,
+    });
+  } catch {}
+}
+
+// 画像生成パネル -------------------------------------------------------------
+
 function renderFolderContext(el) {
   const h = document.createElement("h2");
   h.textContent = state.folder === null ? "未選択" : state.folder || "ライブラリ（ルート）";
   el.appendChild(h);
 
-  const info = document.createElement("div");
-  info.className = "placeholder";
-  info.textContent =
-    state.folder === null
-      ? "左のツリーからフォルダを選択してください"
-      : `画像 ${state.items.length} 件\n\n画像生成パネルはマイルストーン3で実装予定です`;
-  info.style.whiteSpace = "pre-wrap";
-  el.appendChild(info);
+  if (state.folder === null) {
+    const info = document.createElement("div");
+    info.className = "placeholder";
+    info.textContent = "左のツリーからフォルダを選択してください";
+    el.appendChild(info);
+    return;
+  }
+
+  const g = state.genImage;
+  el.appendChild(
+    labeled("バックエンド", makeSelect(state.options.backends, g.backend, (v) => {
+      g.backend = v;
+      renderContext();
+    }))
+  );
+
+  if (g.backend === "ComfyUI") {
+    el.appendChild(
+      labeled("ワークフロー", makeSelect(state.options.image_workflows, g.workflow, (v) => (g.workflow = v)))
+    );
+    if (!g.workflow && state.options.image_workflows.length > 0) {
+      g.workflow = state.options.image_workflows[0];
+    }
+  }
+
+  el.appendChild(labeled("Prompt", makeTextarea(g.positive, 5, (v) => (g.positive = v))));
+  el.appendChild(labeled("Negative Prompt", makeTextarea(g.negative, 2, (v) => (g.negative = v))));
+
+  const row1 = document.createElement("div");
+  row1.className = "row";
+  row1.append(
+    labeled("Width", makeInput("number", g.width, (v) => (g.width = parseInt(v, 10) || 1024))),
+    labeled("Height", makeInput("number", g.height, (v) => (g.height = parseInt(v, 10) || 1024)))
+  );
+  el.appendChild(row1);
+
+  if (g.backend !== "ComfyUI") {
+    const row2 = document.createElement("div");
+    row2.className = "row";
+    row2.append(
+      labeled("Steps", makeInput("number", g.steps, (v) => (g.steps = parseInt(v, 10) || 28))),
+      labeled("CFG", makeInput("number", g.cfg, (v) => (g.cfg = parseFloat(v) || 7.0)))
+    );
+    el.appendChild(row2);
+    el.appendChild(
+      labeled("Sampler", makeSelect(state.options.forge_samplers, g.sampler, (v) => (g.sampler = v)))
+    );
+  }
+
+  el.appendChild(
+    labeled("Seed（-1 でランダム）", makeInput("number", g.seed, (v) => (g.seed = parseInt(v, 10) ?? -1)))
+  );
+
+  const genBtn = document.createElement("button");
+  genBtn.className = "primary";
+  genBtn.textContent = state.genBusy ? "生成中..." : "🖼 生成してこのフォルダに保存";
+  genBtn.disabled = state.genBusy;
+  genBtn.addEventListener("click", () => runImageGeneration(genBtn));
+  el.appendChild(genBtn);
+  el.appendChild(genStatusLine());
+}
+
+async function runImageGeneration(btn) {
+  if (state.genBusy) return;
+  const folder = state.folder;
+  state.genBusy = true;
+  btn.disabled = true;
+  btn.textContent = "生成中...";
+  saveGenSettings();
+  try {
+    await streamGenerate(
+      "/api/generation/image",
+      { folder, ...state.genImage },
+      async (ev) => {
+        if (ev.type === "status") setGenStatus(ev.content);
+        else if (ev.type === "error") setGenStatus(ev.content, true);
+        else if (ev.type === "item") {
+          setGenStatus(ev.status || "生成完了");
+          await loadTree();
+          if (state.folder === folder && !state.selectedId) await loadItems();
+        }
+      }
+    );
+  } catch (e) {
+    setGenStatus(`生成エラー: ${e.message}`, true);
+  } finally {
+    state.genBusy = false;
+    if (btn.isConnected) {
+      btn.disabled = false;
+      btn.textContent = "🖼 生成してこのフォルダに保存";
+    }
+  }
+}
+
+// 動画生成パネル -------------------------------------------------------------
+
+function renderVideoGenContext(el, item) {
+  const h = document.createElement("h2");
+  h.textContent = `動画を生成: ${item.id}`;
+  el.appendChild(h);
+
+  const img = document.createElement("img");
+  img.className = "preview";
+  img.src = `/api/library/file/${item.id}/${item.thumb || "thumb.jpg"}`;
+  el.appendChild(img);
+
+  const g = state.genVideo;
+  if (!g.prompt) g.prompt = item.prompt || "";
+  el.appendChild(
+    labeled("ワークフロー", makeSelect(state.options.video_workflows, g.workflow, (v) => (g.workflow = v)))
+  );
+  if (!g.workflow && state.options.video_workflows.length > 0) {
+    g.workflow = state.options.video_workflows[0];
+  }
+
+  el.appendChild(labeled("動画プロンプト", makeTextarea(g.prompt, 5, (v) => (g.prompt = v))));
+
+  const row = document.createElement("div");
+  row.className = "row";
+  row.append(
+    labeled("Width（空でWF値）", makeInput("number", g.width, (v) => (g.width = v))),
+    labeled("Height", makeInput("number", g.height, (v) => (g.height = v)))
+  );
+  el.appendChild(row);
+
+  const row2 = document.createElement("div");
+  row2.className = "row";
+  row2.append(
+    labeled("Frames（空でWF値）", makeInput("number", g.frames, (v) => (g.frames = v))),
+    labeled("Seed（-1ランダム）", makeInput("number", g.seed, (v) => (g.seed = parseInt(v, 10) ?? -1)))
+  );
+  el.appendChild(row2);
+
+  const genBtn = document.createElement("button");
+  genBtn.className = "primary";
+  genBtn.textContent = state.genBusy ? "生成中..." : "🎞 動画を生成してこの画像に紐づけ";
+  genBtn.disabled = state.genBusy;
+  genBtn.addEventListener("click", () => runVideoGeneration(genBtn, item.id));
+  el.appendChild(genBtn);
+
+  const backBtn = document.createElement("button");
+  backBtn.textContent = "← 画像詳細に戻る";
+  backBtn.addEventListener("click", async () => {
+    state.videoPanel = false;
+    updateHash();
+    await renderContext();
+  });
+  el.appendChild(backBtn);
+  el.appendChild(genStatusLine());
+}
+
+async function runVideoGeneration(btn, itemId) {
+  if (state.genBusy) return;
+  state.genBusy = true;
+  btn.disabled = true;
+  btn.textContent = "生成中...";
+  saveGenSettings();
+  try {
+    await streamGenerate(
+      "/api/generation/video",
+      { item_id: itemId, ...state.genVideo },
+      async (ev) => {
+        if (ev.type === "status") setGenStatus(ev.content);
+        else if (ev.type === "error") setGenStatus(ev.content, true);
+        else if (ev.type === "video") {
+          setGenStatus(ev.status || "動画を生成しました");
+          await loadTree();
+          await loadItems();
+        }
+      }
+    );
+  } catch (e) {
+    setGenStatus(`生成エラー: ${e.message}`, true);
+  } finally {
+    state.genBusy = false;
+    if (btn.isConnected) {
+      btn.disabled = false;
+      btn.textContent = "🎞 動画を生成してこの画像に紐づけ";
+    }
+  }
 }
 
 function renderItemContext(el, item) {
@@ -472,8 +765,13 @@ function renderItemContext(el, item) {
   }
 
   const genVideoBtn = document.createElement("button");
-  genVideoBtn.textContent = "🎞 動画を生成（マイルストーン4）";
-  genVideoBtn.disabled = true;
+  genVideoBtn.className = "primary";
+  genVideoBtn.textContent = "🎞 動画を生成...";
+  genVideoBtn.addEventListener("click", async () => {
+    state.videoPanel = true;
+    updateHash();
+    await renderContext();
+  });
   el.appendChild(genVideoBtn);
 
   // アイテム削除
@@ -512,7 +810,24 @@ async function refresh() {
 }
 
 run(async () => {
-  await loadTree();
-  const m = location.hash.match(/^#folder=(.*)$/);
-  await selectFolder(m ? decodeURIComponent(m[1]) : "");
+  const [, saved, options] = await Promise.all([
+    loadTree(),
+    api("/api/settings").catch(() => ({})),
+    api("/api/generation/options").catch(() => null),
+  ]);
+  if (options) state.options = options;
+  if (saved.gen_image) Object.assign(state.genImage, saved.gen_image);
+  if (saved.gen_video) Object.assign(state.genVideo, saved.gen_video);
+  const p = new URLSearchParams(location.hash.slice(1));
+  const itemId = p.get("item");
+  const videoPanel = p.get("video") === "1";
+  await selectFolder(p.get("folder") || "");
+  if (itemId) {
+    await selectItem(itemId);
+    if (videoPanel) {
+      state.videoPanel = true;
+      updateHash();
+      await renderContext();
+    }
+  }
 });
