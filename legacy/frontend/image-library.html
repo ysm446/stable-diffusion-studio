@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Image Library</title>
+  <link rel="icon" type="image/png" href="/assets/app_icon.png">
+  <link rel="stylesheet" href="/frontend/style.css">
+  <link rel="stylesheet" href="/frontend/image-library.css">
+</head>
+<body class="library-body">
+  <main class="library-page">
+    <header class="library-toolbar">
+      <div>
+        <div class="library-title">Image Library</div>
+        <div id="library-subtitle" class="library-subtitle">0 images</div>
+      </div>
+      <div class="library-actions">
+        <div class="library-search-bar">
+          <input id="library-search" class="text-input" type="search" placeholder="検索">
+          <select id="library-search-mode" class="select" title="Search mode">
+            <option value="hybrid">FTS5 + Vector</option>
+            <option value="fts">FTS5</option>
+            <option value="vector">Vector</option>
+          </select>
+        </div>
+        <select id="library-sort" class="select library-sort-select" title="Sort order">
+          <option value="custom">手動順</option>
+          <option value="newest">新しい順</option>
+          <option value="updated">更新順</option>
+          <option value="filename">ファイル名</option>
+        </select>
+        <button id="library-refresh-btn" class="btn btn-secondary" type="button">更新</button>
+        <button id="library-add-btn" class="btn btn-primary" type="button">画像登録</button>
+        <input id="library-file-input" type="file" accept="image/*" multiple hidden>
+      </div>
+    </header>
+
+    <section class="library-root-bar">
+      <label class="library-root-label" for="library-root-input">ルートフォルダ</label>
+      <input
+        id="library-root-input"
+        class="text-input library-root-input"
+        type="text"
+        placeholder="既定 (data/library) — 「参照」で選択"
+        spellcheck="false"
+      >
+      <button id="library-root-browse-btn" class="btn btn-primary" type="button">参照…</button>
+      <button id="library-root-apply-btn" class="btn btn-secondary" type="button">適用</button>
+      <button id="library-root-reset-btn" class="btn btn-secondary" type="button" title="既定のフォルダに戻す">既定に戻す</button>
+      <span id="library-root-current" class="library-root-current"></span>
+    </section>
+
+    <section class="batch-panel">
+      <button
+        id="batch-panel-toggle"
+        class="batch-panel-toggle"
+        type="button"
+        aria-expanded="false"
+        aria-controls="batch-panel-body"
+      >
+        <span class="batch-panel-caret" aria-hidden="true">▶</span>
+        <span>一括処理</span>
+        <span id="batch-panel-summary" class="batch-panel-summary"></span>
+      </button>
+      <div id="batch-panel-body" class="batch-panel-body" hidden>
+        <div class="batch-caption-bar">
+          <select id="batch-caption-prompt" class="select batch-caption-select" title="Captionプロンプト"></select>
+          <label class="checkbox-label" style="white-space:nowrap">
+            <input type="checkbox" id="batch-skip-existing" checked> キャプションなしのみ
+          </label>
+          <label class="checkbox-label" style="white-space:nowrap">
+            <input type="checkbox" id="batch-reindex-after"> 生成後に再インデックス
+          </label>
+          <button id="batch-caption-btn" class="btn btn-secondary" type="button">一括Caption生成</button>
+          <button id="batch-reindex-btn" class="btn btn-secondary" type="button">一括再インデックス</button>
+          <button id="batch-caption-stop-btn" class="btn btn-secondary" type="button" disabled>停止</button>
+          <span id="batch-caption-progress" class="batch-caption-progress"></span>
+        </div>
+      </div>
+    </section>
+
+    <div id="library-status" class="status-small"></div>
+    <div class="library-main-row">
+      <nav id="library-sidebar" class="library-sidebar">
+        <button id="library-folder-all" class="library-folder-item is-active" type="button" data-folder-id="">
+          <span class="library-folder-icon">&#8962;</span>
+          <span class="library-folder-name">ルート</span>
+        </button>
+        <div class="library-sidebar-heading">
+          フォルダ
+          <button id="library-folder-add-btn" class="library-folder-add-btn" type="button" title="新しいフォルダ">+</button>
+        </div>
+        <div id="library-folder-list"></div>
+      </nav>
+      <div
+        id="library-sidebar-resizer"
+        class="library-sidebar-resizer"
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="Resize sidebar"
+        aria-valuemin="150"
+        aria-valuemax="380"
+        aria-valuenow="200"
+        tabindex="0"
+      ></div>
+      <div id="library-scroll-area" class="library-scroll-area">
+        <section id="library-grid" class="library-grid" aria-live="polite"></section>
+        <div id="library-sentinel" class="library-sentinel" aria-hidden="true"></div>
+        <div id="library-loading" class="library-loading" hidden>読み込み中...</div>
+      </div>
+    </div>
+    <div id="library-drop-overlay" class="library-drop-overlay" aria-hidden="true">
+      <div class="library-drop-message">画像をドロップして登録</div>
+    </div>
+
+    <div id="library-detail-modal" class="library-detail-modal" aria-hidden="true">
+      <div class="library-detail-dialog" role="dialog" aria-modal="true" aria-label="画像詳細">
+        <div class="library-detail-modal-header">
+          <div class="library-detail-nav">
+            <button id="library-detail-prev" class="library-detail-nav-btn" type="button" aria-label="前の画像" title="前の画像" disabled>
+              <svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M10 3L5 8l5 5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+            <button id="library-detail-next" class="library-detail-nav-btn" type="button" aria-label="次の画像" title="次の画像" disabled>
+              <svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M6 3l5 5-5 5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+          </div>
+          <div class="library-detail-modal-title">画像詳細 <span id="library-detail-nav-index" class="library-detail-nav-index"></span></div>
+          <button
+            id="library-detail-close"
+            class="library-detail-close"
+            type="button"
+            aria-label="閉じる"
+            title="閉じる"
+          >×</button>
+        </div>
+        <iframe id="library-detail-frame" class="library-detail-frame" title="画像詳細"></iframe>
+      </div>
+    </div>
+  </main>
+
+  <script src="/frontend/image-library.js"></script>
+</body>
+</html>

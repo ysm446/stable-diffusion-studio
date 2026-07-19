@@ -1,0 +1,12 @@
+{
+  "name": "image-assistant",
+  "version": "1.0.0",
+  "description": "AI image generation assistant (Electron)",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "devDependencies": {
+    "electron": "^33.0.0"
+  }
+}

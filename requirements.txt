@@ -1,0 +1,8 @@
+gradio_client
+requests
+Pillow
+fastapi
+uvicorn
+python-multipart
+psutil
+nvidia-ml-py

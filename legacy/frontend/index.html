@@ -1,0 +1,536 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Image Assistant</title>
+  <link rel="icon" type="image/png" href="/assets/app_icon.png">
+  <link rel="stylesheet" href="/frontend/style.css">
+</head>
+<body>
+  <div class="app-shell">
+    <header class="app-topbar" aria-label="メインナビゲーション">
+      <button type="button" class="topbar-tab is-active" data-page-target="tab-image" aria-label="Image" title="Image">
+        <span class="topbar-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="5" width="18" height="14" rx="2"></rect>
+            <circle cx="8.5" cy="10.5" r="1.5"></circle>
+            <path d="M21 15l-5-5L5 19"></path>
+          </svg>
+        </span>
+        <span class="topbar-label">Image</span>
+      </button>
+      <button type="button" class="topbar-tab" data-page-target="tab-video" aria-label="Video" title="Video">
+        <span class="topbar-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="5" width="15" height="14" rx="2"></rect>
+            <path d="M18 10l4-2v8l-4-2z"></path>
+          </svg>
+        </span>
+        <span class="topbar-label">Video</span>
+      </button>
+      <button type="button" class="topbar-tab" data-page-target="tab-snippets" aria-label="Snippets" title="Snippets">
+        <span class="topbar-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M8 6h13"></path>
+            <path d="M8 12h13"></path>
+            <path d="M8 18h13"></path>
+            <path d="M3 6h.01"></path>
+            <path d="M3 12h.01"></path>
+            <path d="M3 18h.01"></path>
+          </svg>
+        </span>
+        <span class="topbar-label">Snippets</span>
+      </button>
+      <button type="button" class="topbar-tab" data-page-target="tab-library" aria-label="Library" title="Library">
+        <span class="topbar-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M18 22H4a2 2 0 0 1-2-2V6"></path>
+            <rect x="6" y="2" width="16" height="16" rx="2"></rect>
+            <circle cx="11" cy="8" r="1.5"></circle>
+            <path d="m22 14-4-4-6 6"></path>
+          </svg>
+        </span>
+        <span class="topbar-label">Library</span>
+      </button>
+      <div id="topbar-backends" class="topbar-backends" aria-label="バックエンドステータス"></div>
+    </header>
+    <div class="app-workspace">
+      <main class="page-stack">
+  <!-- ================================================================
+       Block 1: 画像生成
+       ================================================================ -->
+  <div id="tab-image" class="block is-active">
+    <div class="block-title">画像生成</div>
+    <div class="block-body">
+      <div class="three-col">
+
+        <!-- 左: 画像表示 -->
+        <div class="col">
+          <div class="image-drop-area" id="image-drop-area">
+            <img id="image-display" style="display:none" alt="生成画像">
+            <div id="image-placeholder" class="placeholder-text">
+              画像をドロップ<br>またはクリックしてアップロード
+            </div>
+            <button type="button" id="image-zoom-btn" class="image-zoom-btn" aria-label="画像を開く" title="画像を開く" style="display:none">+</button>
+            <input type="file" id="image-file-input" accept="image/*" style="display:none">
+          </div>
+          <div class="status-box" id="image-status"></div>
+          <div class="field-row">
+            <input type="text" id="image-save-path" class="text-input" value="./outputs/images" placeholder="保存先フォルダ" style="flex:1">
+            <button class="btn btn-icon" id="open-image-path-btn" title="フォルダを開く">📁</button>
+          </div>
+          <div id="image-file-path" class="status-small" style="word-break:break-all"></div>
+          <div class="btn-row" style="justify-content:flex-end;margin-top:6px">
+            <button id="save-to-library-btn" class="btn btn-secondary" type="button" style="flex:0 0 auto" disabled>ライブラリに保存</button>
+          </div>
+          <div id="save-to-library-status" class="status-small"></div>
+        </div>
+
+        <!-- 中: プロンプト + パラメータ -->
+        <div class="col">
+          <label class="field-label">Positive Prompt</label>
+          <div class="textarea-wrap">
+            <textarea id="positive-prompt" class="textarea" rows="16"
+              placeholder="例: 1girl, sunset, orange sky, dramatic lighting, ..."
+              style="resize:none;overflow:hidden"></textarea>
+            <button class="btn-copy" data-target="positive-prompt" title="コピー">⎘</button>
+          </div>
+
+          <label class="field-label">Negative Prompt</label>
+          <div class="textarea-wrap">
+            <textarea id="negative-prompt" class="textarea" rows="3"
+              placeholder="例: bad quality, worst quality, ..."></textarea>
+            <button class="btn-copy" data-target="negative-prompt" title="コピー">⎘</button>
+          </div>
+
+          <div class="btn-row" style="justify-content:flex-end">
+            <button id="generate-btn" class="btn btn-primary" style="flex:0 0 auto;min-width:80px">画像生成</button>
+            <button id="stop-btn" class="btn btn-secondary" style="flex:0 0 auto;min-width:64px">停止</button>
+            <button id="clear-prompt-btn" class="btn btn-secondary" style="flex:0 0 auto;min-width:64px">クリア</button>
+          </div>
+
+          <!-- 画像生成パラメータ accordion -->
+          <details class="accordion" data-accordion-id="image-generation-params">
+            <summary>画像生成パラメータ</summary>
+            <div class="accordion-body">
+
+              <div class="field-row backend-select-row">
+                <label class="field-label" for="backend-select" style="margin:0">バックエンド</label>
+                <select id="backend-select" class="select">
+                  <option value="WebUI Forge">Stable Diffusion</option>
+                  <option value="ComfyUI">ComfyUI</option>
+                </select>
+                <button class="btn btn-icon" id="open-backend-browser-btn" type="button" title="選択中のバックエンドをブラウザで開く" aria-label="選択中のバックエンドをブラウザで開く">↗</button>
+              </div>
+              <!-- ComfyUI workflow (ComfyUI のみ表示) -->
+              <div id="comfyui-params" style="display:none">
+                <label class="field-label">ComfyUI ワークフロー</label>
+                <div class="field-row">
+                  <select id="comfyui-workflow" class="select" style="flex:1"></select>
+                  <button class="btn btn-icon" id="open-image-workflow-folder-btn" title="ワークフローフォルダを開く">📁</button>
+                </div>
+
+                <div class="dimension-group">
+                  <div class="slider-row">
+                    <label>Width</label>
+                    <input type="range" id="comfyui-width" min="64" max="2048" step="8" value="1024">
+                    <span id="comfyui-width-val">1024</span>
+                  </div>
+                  <button class="btn btn-icon dimension-swap-btn" type="button" data-swap-width="comfyui-width" data-swap-height="comfyui-height" title="Width と Height を入れ替え" aria-label="Width と Height を入れ替え">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                      <path d="M8 3 4 7l4 4"></path>
+                      <path d="M4 7h12a4 4 0 0 1 0 8h-1"></path>
+                      <path d="m16 21 4-4-4-4"></path>
+                      <path d="M20 17H8a4 4 0 0 1 0-8h1"></path>
+                    </svg>
+                  </button>
+                  <div class="slider-row">
+                    <label>Height</label>
+                    <input type="range" id="comfyui-height" min="64" max="2048" step="8" value="1024">
+                    <span id="comfyui-height-val">1024</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- WebUI Forge params (Forge のみ表示) -->
+              <div id="forge-params">
+                <div class="slider-row">
+                  <label>Steps</label>
+                  <input type="range" id="steps-slider" min="1" max="150" step="1" value="28">
+                  <span id="steps-val">28</span>
+                </div>
+                <div class="slider-row">
+                  <label>CFG Scale</label>
+                  <input type="range" id="cfg-slider" min="1" max="30" step="0.5" value="7">
+                  <span id="cfg-val">7.0</span>
+                </div>
+                <div class="field-row sampler-row">
+                  <label class="field-label" for="sampler-dropdown" style="margin:0">Sampler</label>
+                  <select id="sampler-dropdown" class="select" style="flex:1"></select>
+                </div>
+
+                <div class="dimension-group">
+                  <div class="slider-row">
+                    <label>Width</label>
+                    <input type="range" id="width-slider" min="64" max="2048" step="8" value="512">
+                    <span id="width-val">512</span>
+                  </div>
+                  <button class="btn btn-icon dimension-swap-btn" type="button" data-swap-width="width-slider" data-swap-height="height-slider" title="Width と Height を入れ替え" aria-label="Width と Height を入れ替え">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                      <path d="M8 3 4 7l4 4"></path>
+                      <path d="M4 7h12a4 4 0 0 1 0 8h-1"></path>
+                      <path d="m16 21 4-4-4-4"></path>
+                      <path d="M20 17H8a4 4 0 0 1 0-8h1"></path>
+                    </svg>
+                  </button>
+                  <div class="slider-row">
+                    <label>Height</label>
+                    <input type="range" id="height-slider" min="64" max="2048" step="8" value="768">
+                    <span id="height-val">768</span>
+                  </div>
+                </div>
+              </div>
+
+            </div>
+          </details>
+          <div id="forge-seed-controls" class="seed-controls">
+            <label class="field-label">Seed（-1 でランダム）</label>
+            <div class="seed-row">
+              <input type="number" id="seed-input" class="number-input seed-input" value="-1">
+              <button class="btn btn-icon" id="seed-random-btn" title="ランダム">🎲</button>
+              <button class="btn btn-icon" id="seed-from-image-btn" title="画像から取得">♻️</button>
+            </div>
+          </div>
+          <div id="comfyui-seed-controls" class="seed-controls" style="display:none">
+            <label class="field-label">Seed（-1 でランダム）</label>
+            <div class="seed-row">
+              <input type="number" id="comfyui-seed" class="number-input seed-input" value="-1">
+              <button class="btn btn-icon" id="comfyui-seed-random-btn" title="ランダム">🎲</button>
+              <button class="btn btn-icon" id="comfyui-seed-from-image-btn" title="画像から取得">♻️</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 右: AI チャット -->
+        <div class="col">
+          <div class="chatbot" id="chatbot"></div>
+
+          <textarea id="user-input" class="textarea" rows="2"
+            placeholder="AI へのメッセージを入力..."
+            style="resize:none;overflow:hidden"></textarea>
+
+          <div class="btn-row" style="justify-content:flex-end">
+            <div id="ctx-gauge-wrap">
+              <svg id="ctx-gauge" viewBox="0 0 36 36">
+                <circle class="ctx-gauge-bg" cx="18" cy="18" r="15.9"/>
+                <circle id="ctx-gauge-fill" class="ctx-gauge-fill" cx="18" cy="18" r="15.9"
+                        stroke-dasharray="0 100"/>
+              </svg>
+              <span id="ctx-gauge-pct">–</span>
+              <div class="ctx-gauge-tooltip">
+                <div id="ctx-tip-tokens">会話トークン: –</div>
+                <div id="ctx-tip-limit">コンテキスト上限: –</div>
+                <div id="ctx-tip-pct">– 使用中（– 残り）</div>
+              </div>
+            </div>
+            <button id="prompt-debug-btn" class="btn-prompt-debug" title="最後に送ったプロンプトを確認">
+              <svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" style="width:14px;height:14px;display:block">
+                <path d="M3 2h7l3 3v9H3V2z" fill="currentColor" opacity="0.15"/>
+                <path d="M3 2h7l3 3v9H3V2z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/>
+                <path d="M10 2v3h3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+                <path d="M6 7h5M6 9.5h5M6 12h3" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/>
+              </svg>
+            </button>
+            <button id="send-btn" class="btn btn-primary" style="flex:0 0 auto;min-width:80px">送信</button>
+            <button id="clear-btn" class="btn btn-secondary" style="flex:0 0 auto;min-width:80px">クリア</button>
+          </div>
+
+          <div class="field-row" style="gap:6px;margin-top:2px">
+            <select id="chat-prompt-select" class="select" style="flex:1" title="システムプロンプト"></select>
+          </div>
+
+          <!-- システムプロンプト設定 accordion -->
+          <details class="accordion" data-accordion-id="chat-prompt-settings">
+            <summary>システムプロンプト設定</summary>
+            <div class="accordion-body">
+              <input id="chat-prompt-name" class="text-input" type="text" placeholder="プリセット名" style="width:100%;margin-bottom:6px">
+              <div class="btn-row" style="margin-bottom:8px;justify-content:flex-end">
+                <button id="chat-prompt-new-btn" class="btn btn-secondary" type="button" style="flex:0 0 auto;min-width:64px">新規</button>
+                <button id="chat-prompt-save-btn" class="btn btn-primary" type="button" style="flex:0 0 auto;min-width:64px">保存</button>
+                <button id="chat-prompt-delete-btn" class="btn btn-secondary" type="button" style="flex:0 0 auto;min-width:64px">削除</button>
+              </div>
+              <div class="textarea-wrap">
+                <textarea id="chat-prompt-system" class="textarea chat-prompt-textarea"></textarea>
+                <button class="btn-copy" data-target="chat-prompt-system" title="コピー">⎘</button>
+              </div>
+              <div class="library-subtitle" style="margin-top:4px">
+                使用できる変数: {positive_prompt}, {negative_prompt}, {library_context}
+              </div>
+              <div id="library-limit-row" class="slider-row" style="margin-top:10px">
+                <label>参照件数</label>
+                <input type="range" id="library-limit" min="1" max="20" step="1" value="5">
+                <span id="library-limit-val">5</span>
+              </div>
+              <div class="field-row" style="margin-top:8px;gap:6px;align-items:center">
+                <label style="white-space:nowrap;font-size:12px;min-width:fit-content">検索モード</label>
+                <select id="library-search-mode" class="select" style="flex:1">
+                  <option value="vector">ベクトルのみ</option>
+                  <option value="hybrid">FTS5 + ベクトル</option>
+                </select>
+              </div>
+            </div>
+          </details>
+
+          <!-- チャットの設定 accordion -->
+          <details class="accordion" data-accordion-id="chat-settings">
+            <summary>チャットの設定</summary>
+            <div class="accordion-body">
+              <div class="slider-row">
+                <label>コンテキスト上限</label>
+                <input type="range" id="chat-context-slider" min="0" max="3" step="1" value="0">
+                <span id="chat-context-val">4k</span>
+              </div>
+            </div>
+          </details>
+
+          <!-- モデル設定（上部バーのLLMボタンで操作するため非表示） -->
+          <div hidden>
+            <select id="model-dropdown" class="select"></select>
+            <button id="load-model-btn" type="button">ロード</button>
+            <div id="model-status"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div><!-- /tab-image -->
+
+  <!-- ================================================================
+       Block 2: 動画生成
+       ================================================================ -->
+  <div id="tab-video" class="block">
+    <div class="block-title">動画生成</div>
+    <div class="block-body">
+      <div class="three-col">
+
+        <!-- 左: 動画表示 -->
+        <div class="col">
+          <div class="video-area">
+            <video id="video-display" controls loop style="display:none; width:100%; height:auto;"></video>
+            <div id="video-placeholder" class="placeholder-text">生成動画がここに表示されます</div>
+          </div>
+          <div class="status-box" id="video-status"></div>
+          <div class="field-row">
+            <input type="text" id="video-save-path" class="text-input" value="./outputs/videos" placeholder="保存先フォルダ" style="flex:1">
+            <button class="btn btn-icon" id="open-video-path-btn" title="フォルダを開く">📁</button>
+          </div>
+          <div id="video-file-path" class="status-small" style="word-break:break-all"></div>
+        </div>
+
+        <!-- 中: 動画プロンプト + 追加指示 + セクション + プロンプト生成 + JSON保存 + 動画生成/停止 -->
+        <div class="col">
+          <label class="field-label">動画プロンプト</label>
+          <div class="textarea-wrap">
+            <textarea id="video-prompt" class="textarea" rows="10"
+              placeholder="「動画プロンプト生成」ボタンで自動生成、または直接入力"></textarea>
+            <button class="btn-copy" data-target="video-prompt" title="コピー">⎘</button>
+          </div>
+
+          <div class="btn-row" style="justify-content:flex-end">
+            <button id="generate-video-btn" class="btn btn-primary" style="flex:0 0 auto;min-width:80px">動画生成</button>
+            <button id="stop-video-btn" class="btn btn-secondary" style="flex:0 0 auto;min-width:64px">停止</button>
+          </div>
+
+          <label class="field-label">基画像プロンプト</label>
+          <textarea id="video-source-prompt" class="textarea" rows="4"
+            placeholder="基画像の Positive Prompt。画像のメタデータまたは画像生成ページから取得できます"></textarea>
+
+          <label class="field-label">追加指示</label>
+          <textarea id="video-extra-instruction" class="textarea" rows="3"
+            placeholder="例: slowly zoom in, hair flowing in the wind, cinematic lighting"></textarea>
+
+          <label class="field-label" style="margin-top:8px">生成するセクション</label>
+          <div id="video-sections" class="checkbox-group" style="flex-direction:row; flex-wrap:wrap; gap:8px 16px;">
+            <label class="checkbox-label"><input type="checkbox" name="video-section" value="scene" checked> scene</label>
+            <label class="checkbox-label"><input type="checkbox" name="video-section" value="action" checked> action</label>
+            <label class="checkbox-label"><input type="checkbox" name="video-section" value="camera" checked> camera</label>
+            <label class="checkbox-label"><input type="checkbox" name="video-section" value="style" checked> style</label>
+            <label class="checkbox-label"><input type="checkbox" name="video-section" value="prompt" checked> prompt</label>
+          </div>
+
+          <div class="btn-row" style="margin-top:8px;justify-content:flex-end">
+            <button id="generate-video-prompt-btn" class="btn btn-primary" style="flex:0 0 auto">
+              動画プロンプト生成
+            </button>
+            <button id="save-json-btn" class="btn btn-secondary" style="flex:0 0 auto;min-width:80px">JSON保存</button>
+          </div>
+          <div id="save-json-status" class="status-small" style="padding:0 6px;"></div>
+        </div>
+
+        <!-- 右: 動画ワークフロー + 動画生成パラメータ + VRAM -->
+        <div class="col">
+          <label class="field-label">基にするイメージ</label>
+          <div class="video-image-drop-area" id="video-image-drop-area">
+            <img id="video-image-display" style="display:none" alt="動画の基にするイメージ">
+            <div id="video-image-placeholder" class="placeholder-text">
+              画像をドロップ<br>またはクリックしてアップロード
+            </div>
+            <input type="file" id="video-image-file-input" accept="image/*" style="display:none">
+          </div>
+          <button id="video-image-from-current-btn" class="btn btn-secondary" type="button">
+            画像生成から取得
+          </button>
+          <div id="video-image-status" class="status-small"></div>
+
+          <label class="field-label">動画ワークフロー</label>
+          <div class="field-row">
+            <select id="video-workflow" class="select" style="flex:1"></select>
+            <button class="btn btn-icon" id="open-video-workflow-folder-btn" title="ワークフローフォルダを開く">📁</button>
+          </div>
+
+          <!-- 動画生成パラメータ accordion -->
+          <details class="accordion" data-accordion-id="video-generation-params">
+            <summary>動画生成パラメータ</summary>
+            <div class="accordion-body">
+              <div class="slider-row">
+                <label>Width</label>
+                <input type="range" id="video-width" min="240" max="1920" step="16" value="848">
+                <span id="video-width-val">848</span>
+              </div>
+              <div class="slider-row">
+                <label>Height</label>
+                <input type="range" id="video-height" min="240" max="1920" step="16" value="480">
+                <span id="video-height-val">480</span>
+              </div>
+              <div class="btn-row" style="margin-bottom:4px">
+                <button class="btn btn-secondary btn-sm" id="video-res-640">640 × 480</button>
+                <button class="btn btn-secondary btn-sm" id="video-res-1280">1280 × 720</button>
+              </div>
+
+              <label class="field-label" style="margin-top:6px">フレーム数</label>
+              <div class="field-row">
+                <input type="number" id="video-frames" class="number-input" value="81" min="1" max="1000" step="1" style="width:80px">
+              </div>
+
+              <label class="field-label" style="margin-top:6px">Seed（-1 でランダム）</label>
+              <div class="seed-row">
+                <input type="number" id="video-seed" class="number-input seed-input" value="-1">
+                <button class="btn btn-icon" id="video-seed-random-btn" title="ランダム">🎲</button>
+                <button class="btn btn-icon" id="video-seed-from-video-btn" title="動画から取得">♻️</button>
+              </div>
+            </div>
+          </details>
+
+          <!-- VRAM accordion -->
+          <details class="accordion" data-accordion-id="vram-settings">
+            <summary>VRAM</summary>
+            <div class="accordion-body">
+              <label class="checkbox-label">
+                <input type="checkbox" id="unload-llm-before-video">
+                動画生成前にLLMのメモリを解放する
+              </label>
+            </div>
+          </details>
+        </div>
+      </div>
+    </div>
+  </div><!-- /tab-video -->
+
+  <!-- ================================================================
+       Block 3: スニペット管理
+       ================================================================ -->
+  <div id="tab-snippets" class="block">
+    <iframe
+      class="snippet-page-frame"
+      src="/frontend/snippet-manager.html"
+      title="スニペット管理"
+    ></iframe>
+  </div><!-- /tab-snippets -->
+
+  <div id="tab-library" class="block">
+    <iframe
+      class="snippet-page-frame"
+      src="/frontend/image-library.html"
+      title="画像ライブラリ"
+    ></iframe>
+  </div><!-- /tab-library -->
+      </main>
+
+  <div id="generation-queue-bar" class="generation-queue-bar" aria-label="生成キュー">
+    <div class="generation-queue-controls">
+      <div class="generation-queue-title-wrap">
+        <span class="generation-queue-title">生成キュー</span>
+        <span id="generation-queue-count" class="generation-queue-count">0</span>
+        <label class="sound-toggle" title="効果音のオン/オフ">
+          <input type="checkbox" id="sound-enabled" checked>
+          <!-- sound on -->
+          <svg class="sound-icon sound-on" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+            <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3A4.5 4.5 0 0 0 14 7.97v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/>
+          </svg>
+          <!-- sound off -->
+          <svg class="sound-icon sound-off" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+            <path d="M16.5 12A4.5 4.5 0 0 0 14 7.97v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51A8.796 8.796 0 0 0 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3 3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06A8.99 8.99 0 0 0 17 19.73l1.73 1.73L20 20.46 4.27 3zM12 4 9.91 6.09 12 8.18V4z"/>
+          </svg>
+        </label>
+      </div>
+      <button type="button" id="generation-queue-clear-btn" class="btn btn-secondary btn-sm">
+        全クリア
+      </button>
+    </div>
+    <div class="generation-queue-track">
+      <div id="generation-queue-empty" class="generation-queue-empty">キューはありません</div>
+      <div id="generation-queue-list" class="generation-queue-list" aria-live="polite"></div>
+    </div>
+  </div>
+  <footer class="app-status-bar" aria-label="システムステータス">
+    <div id="system-stats" class="system-stats"></div>
+    <button id="vram-debug-toggle" class="vram-debug-toggle" type="button">VRAM Debug</button>
+    <div id="vram-debug-panel" class="vram-debug-panel" hidden>
+      <div id="vram-debug-title" class="vram-debug-title">VRAM breakdown</div>
+      <div id="vram-debug-bar" class="vram-debug-bar"></div>
+      <div id="vram-debug-legend" class="vram-debug-legend"></div>
+    </div>
+  </footer>
+    </div>
+  </div>
+
+  <div id="llm-model-modal" class="llm-modal" aria-hidden="true">
+    <div class="llm-modal-backdrop" data-llm-close></div>
+    <div class="llm-modal-panel" role="dialog" aria-modal="true" aria-labelledby="llm-modal-title">
+      <div class="llm-modal-header">
+        <h2 id="llm-modal-title">LLM モデル選択</h2>
+        <button type="button" class="llm-modal-close" data-llm-close aria-label="閉じる">×</button>
+      </div>
+      <div class="llm-modal-body">
+        <ul id="llm-model-list" class="llm-model-list"></ul>
+      </div>
+      <div id="llm-modal-status" class="llm-modal-status"></div>
+    </div>
+  </div>
+
+  <div id="image-lightbox" class="image-lightbox" aria-hidden="true">
+    <button
+      type="button"
+      id="image-lightbox-close"
+      class="image-lightbox-close"
+      aria-label="拡大表示を閉じる"
+      title="閉じる"
+    >×</button>
+    <img id="image-lightbox-display" class="image-lightbox-display" alt="拡大画像">
+  </div>
+
+  <!-- Prompt debug modal -->
+  <div id="prompt-debug-modal" class="prompt-debug-overlay" hidden>
+    <div class="prompt-debug-dialog">
+      <div class="prompt-debug-header">
+        <span>最後に送ったプロンプト</span>
+        <button id="prompt-debug-close" class="prompt-debug-close">✕</button>
+      </div>
+      <div id="prompt-debug-body" class="prompt-debug-body"></div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/marked@9/marked.min.js"></script>
+  <script type="module" src="/frontend/app.js"></script>
+</body>
+</html>

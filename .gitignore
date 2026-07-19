@@ -1,0 +1,67 @@
+# IDE / editor
+.vscode/
+.idea/
+*.code-workspace
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Node.js / Electron
+node_modules/
+electron/node_modules/
+npm-debug.log*
+
+# Local environment / caches
+.env
+.cache/
+.claude/
+.last_model_cache.json
+
+# User-local app settings / generated metadata
+settings.json
+forge_api_info.txt
+
+# Logs
+*.log
+*.pid
+logs/
+
+# Generated outputs
+outputs/
+data/
+data/sd_outputs/
+data/database/
+data/downloads/
+
+# Snippets (managed locally, may point to an external folder)
+snippets/
+
+# Large local model assets
+models/*/
+!models/.gitkeep
+
+# Local binaries
+runtime/
+
+# Windows special file
+nul

@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Library Detail</title>
+  <link rel="icon" type="image/png" href="/assets/app_icon.png">
+  <link rel="stylesheet" href="/frontend/style.css">
+  <link rel="stylesheet" href="/frontend/image-library.css">
+</head>
+<body class="library-body detail-body">
+  <main class="library-detail">
+    <section class="detail-preview">
+      <img id="detail-image" alt="library image">
+      <div id="detail-meta" class="library-subtitle"></div>
+      <button id="detail-use-btn" class="btn btn-primary library-use-image-btn" type="button">画像生成へ転送する</button>
+    </section>
+    <section class="detail-editor">
+      <header class="detail-header">
+        <div>
+          <div id="detail-title" class="library-title">Image</div>
+          <div id="detail-status" class="status-small"></div>
+        </div>
+        <div class="detail-actions">
+          <select id="detail-caption-prompt" class="select detail-caption-mode" title="Captionプロンプト"></select>
+          <button id="detail-caption-btn" class="btn btn-secondary" type="button">Caption更新</button>
+          <button id="detail-save-btn" class="btn btn-primary" type="button">保存して再インデックス化</button>
+        </div>
+      </header>
+
+      <label class="field-label">Caption</label>
+      <textarea id="detail-caption" class="textarea" rows="6"></textarea>
+
+      <label class="field-label">Tags</label>
+      <textarea id="detail-tags" class="textarea" rows="2"></textarea>
+
+      <label class="field-label">Positive Prompt</label>
+      <textarea id="detail-positive" class="textarea" rows="8"></textarea>
+
+      <label class="field-label">Negative Prompt</label>
+      <textarea id="detail-negative" class="textarea" rows="4"></textarea>
+
+      <label class="field-label">Notes</label>
+      <textarea id="detail-notes" class="textarea" rows="4"></textarea>
+
+      <details class="accordion caption-prompt-editor">
+        <summary>Caption プロンプト設定</summary>
+        <div class="caption-prompt-body">
+          <div class="field-row">
+            <input id="caption-prompt-name" class="text-input" type="text" placeholder="プリセット名">
+            <button id="caption-prompt-new-btn" class="btn btn-secondary" type="button">新規</button>
+            <button id="caption-prompt-save-btn" class="btn btn-primary" type="button">保存</button>
+            <button id="caption-prompt-delete-btn" class="btn btn-secondary" type="button">削除</button>
+          </div>
+
+          <label class="field-label">System Prompt</label>
+          <textarea id="caption-prompt-system" class="textarea" rows="8"></textarea>
+
+          <label class="field-label">User Prompt</label>
+          <textarea id="caption-prompt-user" class="textarea" rows="5"></textarea>
+
+          <div class="library-subtitle">
+            使用できる変数: {positive_prompt}, {negative_prompt}, {notes}, {filename}, {tags}
+          </div>
+        </div>
+      </details>
+
+      <details class="accordion">
+        <summary>Raw metadata</summary>
+        <pre id="detail-raw" class="detail-raw"></pre>
+      </details>
+    </section>
+  </main>
+
+  <script src="/frontend/image-library-detail.js"></script>
+</body>
+</html>

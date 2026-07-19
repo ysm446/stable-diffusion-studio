@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Snippet Manager</title>
+  <link rel="icon" type="image/png" href="/assets/app_icon.png">
+  <link rel="stylesheet" href="/frontend/style.css">
+  <link rel="stylesheet" href="/frontend/snippet-manager.css">
+</head>
+<body class="snippet-manager-body">
+  <div class="snippet-manager-layout">
+    <aside class="snippet-sidebar">
+      <div class="snippet-pane-header">
+        <div>
+          <div class="snippet-pane-title">Snippet Files</div>
+          <div id="snippet-root-current" class="snippet-pane-subtitle"></div>
+        </div>
+        <button id="snippet-refresh-btn" class="btn btn-secondary" type="button">更新</button>
+      </div>
+
+      <div class="snippet-root-box">
+        <input
+          id="snippet-root-input"
+          class="text-input"
+          type="text"
+          placeholder="既定 (snippets) — 「フォルダを開く」で選択"
+          spellcheck="false"
+        >
+        <button id="snippet-root-browse-btn" class="btn btn-primary" type="button">フォルダを開く</button>
+        <div class="field-row">
+          <button id="snippet-root-apply-btn" class="btn btn-secondary" type="button" style="flex:1">適用</button>
+          <button id="snippet-root-reset-btn" class="btn btn-secondary" type="button" style="flex:0 0 auto" title="既定のフォルダに戻す">既定に戻す</button>
+        </div>
+      </div>
+
+      <div class="snippet-create-box">
+        <div class="field-row">
+          <input id="snippet-new-file-name" class="text-input" type="text" placeholder="new_file" style="flex:1">
+          <button id="snippet-create-file-btn" class="btn btn-primary" type="button" style="flex:0 0 auto;min-width:64px">作成</button>
+        </div>
+      </div>
+
+      <div id="snippet-file-list" class="snippet-file-list"></div>
+    </aside>
+
+    <main class="snippet-main">
+      <div class="snippet-pane-header">
+        <div>
+          <div id="snippet-current-file" class="snippet-pane-title">ファイルを選択</div>
+          <div id="snippet-current-meta" class="snippet-pane-subtitle"></div>
+        </div>
+      </div>
+
+      <div class="snippet-editor-layout">
+        <section class="snippet-entry-pane">
+          <div class="snippet-list-toolbar">
+            <div class="snippet-pane-subtitle">Entries</div>
+            <button id="snippet-add-entry-btn" class="btn btn-secondary" type="button">追加</button>
+          </div>
+          <input id="snippet-entry-search" class="text-input" type="text" placeholder="全ファイルから項目検索">
+          <div id="snippet-entry-list" class="snippet-entry-list"></div>
+        </section>
+
+        <section class="snippet-form-pane">
+          <div class="snippet-help-box">
+            <div class="snippet-help-title">項目の意味</div>
+            <div class="snippet-help-item"><strong>name</strong>: 管理用の名前</div>
+            <div class="snippet-help-item"><strong>prefix</strong>: 補完の検索キー</div>
+            <div class="snippet-help-item"><strong>body</strong>: 実際に挿入される文字列</div>
+            <div class="snippet-help-item"><strong>description</strong>: 候補一覧の説明</div>
+          </div>
+
+          <div class="field-label">Name</div>
+          <input id="snippet-entry-name" class="text-input" type="text" placeholder="arms spread">
+
+          <div class="field-label">Prefix</div>
+          <input id="snippet-entry-prefix" class="text-input" type="text" placeholder="arms spread">
+
+          <div class="field-label">Description</div>
+          <input id="snippet-entry-description" class="text-input" type="text" placeholder="腕を横に伸ばす">
+
+          <div class="field-label">Body</div>
+          <textarea id="snippet-entry-body" class="textarea" rows="14" placeholder="arms spread"></textarea>
+
+          <div class="field-row snippet-form-footer">
+            <div id="snippet-status" class="status-small"></div>
+            <button id="snippet-save-file-btn" class="btn btn-primary" type="button">保存</button>
+          </div>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <script src="/frontend/snippet-manager.js"></script>
+</body>
+</html>

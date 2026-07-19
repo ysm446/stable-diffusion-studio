@@ -1,0 +1,176 @@
+"""ライブラリ API。"""
+
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Any
+
+from fastapi import APIRouter, Form, HTTPException, UploadFile
+from fastapi.responses import FileResponse
+from pydantic import BaseModel
+
+from server.library import folders, index_db, items, paths
+
+router = APIRouter(prefix="/api/library")
+
+
+def _wrap(fn, *args, **kwargs):
+    try:
+        return fn(*args, **kwargs)
+    except items.NotFound as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except (items.LibraryError, folders.FolderError, ValueError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+# ---------------------------------------------------------------------------
+# フォルダ
+# ---------------------------------------------------------------------------
+
+
+class FolderCreate(BaseModel):
+    parent: str = ""
+    name: str
+
+
+class FolderRename(BaseModel):
+    rel: str
+    new_name: str
+
+
+class FolderMove(BaseModel):
+    rel: str
+    dest_parent: str = ""
+
+
+@router.get("/tree")
+def get_tree() -> dict[str, Any]:
+    return folders.tree()
+
+
+@router.post("/folders")
+def create_folder(body: FolderCreate) -> dict[str, str]:
+    rel = _wrap(folders.create_folder, body.parent, body.name)
+    return {"rel": rel}
+
+
+@router.post("/folders/rename")
+def rename_folder(body: FolderRename) -> dict[str, str]:
+    rel = _wrap(folders.rename_folder, body.rel, body.new_name)
+    return {"rel": rel}
+
+
+@router.post("/folders/move")
+def move_folder(body: FolderMove) -> dict[str, str]:
+    rel = _wrap(folders.move_folder, body.rel, body.dest_parent)
+    return {"rel": rel}
+
+
+@router.delete("/folders")
+def delete_folder(rel: str, recursive: bool = False) -> dict[str, bool]:
+    _wrap(folders.delete_folder, rel, recursive=recursive)
+    return {"ok": True}
+
+
+# ---------------------------------------------------------------------------
+# アイテム
+# ---------------------------------------------------------------------------
+
+
+class ItemUpdate(BaseModel):
+    prompt: str | None = None
+    negative_prompt: str | None = None
+    caption: str | None = None
+    seed: int | None = None
+    params: dict[str, Any] | None = None
+    tags: list[str] | None = None
+
+
+class ItemMove(BaseModel):
+    folder: str = ""
+
+
+@router.get("/items")
+def list_items(folder: str = "", recursive: bool = False, q: str = "") -> dict[str, Any]:
+    folder = _wrap(paths.normalize_rel, folder)
+    if q.strip():
+        rows = index_db.search_items(q.strip(), folder)
+    else:
+        rows = index_db.list_items(folder, recursive)
+    return {"items": rows}
+
+
+@router.get("/items/{item_id}")
+def get_item(item_id: str) -> dict[str, Any]:
+    return _wrap(items.get_item, item_id)
+
+
+@router.post("/items/import")
+async def import_image(folder: str = Form(""), file: UploadFile | None = None) -> dict[str, Any]:
+    if file is None:
+        raise HTTPException(status_code=400, detail="file is required")
+    data = await file.read()
+    return _wrap(items.import_image, folder, data, file.filename or "")
+
+
+@router.patch("/items/{item_id}")
+def update_item(item_id: str, body: ItemUpdate) -> dict[str, Any]:
+    fields = {k: v for k, v in body.model_dump().items() if v is not None}
+    return _wrap(items.update_item, item_id, fields)
+
+
+@router.post("/items/{item_id}/move")
+def move_item(item_id: str, body: ItemMove) -> dict[str, Any]:
+    return _wrap(items.move_item, item_id, body.folder)
+
+
+@router.delete("/items/{item_id}")
+def delete_item(item_id: str) -> dict[str, bool]:
+    _wrap(items.delete_item, item_id)
+    return {"ok": True}
+
+
+# ---------------------------------------------------------------------------
+# 動画
+# ---------------------------------------------------------------------------
+
+
+@router.post("/items/{item_id}/videos")
+async def add_video(
+    item_id: str,
+    file: UploadFile | None = None,
+    prompt: str = Form(""),
+    workflow: str = Form(""),
+) -> dict[str, Any]:
+    if file is None:
+        raise HTTPException(status_code=400, detail="file is required")
+    data = await file.read()
+    ext = Path(file.filename or "").suffix.lower() or ".mp4"
+    return _wrap(items.add_video, item_id, data, ext=ext, prompt=prompt, workflow=workflow)
+
+
+@router.delete("/items/{item_id}/videos/{file_name}")
+def remove_video(item_id: str, file_name: str) -> dict[str, Any]:
+    return _wrap(items.remove_video, item_id, file_name)
+
+
+# ---------------------------------------------------------------------------
+# ファイル配信・インデックス
+# ---------------------------------------------------------------------------
+
+
+@router.get("/file/{item_id}/{name:path}")
+def get_file(item_id: str, name: str):
+    d = _wrap(items.item_dir, item_id)
+    target = (d / name).resolve()
+    if d.resolve() not in target.parents:
+        raise HTTPException(status_code=400, detail="invalid file path")
+    if not target.is_file():
+        raise HTTPException(status_code=404, detail="file not found")
+    return FileResponse(str(target))
+
+
+@router.post("/reindex")
+def reindex() -> dict[str, int]:
+    count = index_db.rebuild()
+    return {"count": count}

@@ -1,0 +1,244 @@
+.snippet-manager-body {
+  overflow: hidden;
+}
+
+.snippet-manager-layout {
+  display: grid;
+  grid-template-columns: 320px minmax(0, 1fr);
+  height: 100vh;
+  background: var(--bg2);
+}
+
+.snippet-sidebar,
+.snippet-main {
+  min-height: 0;
+}
+
+.snippet-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  border-right: 1px solid var(--border);
+  background: var(--bg2);
+}
+
+.snippet-main {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 16px;
+}
+
+.snippet-pane-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.snippet-manager-body .btn {
+  flex: 0 0 auto;
+}
+
+.snippet-pane-header .btn,
+.snippet-list-toolbar .btn {
+  min-width: 72px;
+}
+
+.snippet-pane-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.snippet-pane-subtitle {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.snippet-root-box,
+.snippet-create-box {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.snippet-root-box .text-input {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+}
+
+.snippet-file-list,
+.snippet-entry-list {
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.snippet-file-item,
+.snippet-entry-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 30px;
+  align-items: stretch;
+  gap: 6px;
+  width: 100%;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+}
+
+.snippet-item-main {
+  min-width: 0;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: calc(var(--radius) - 2px);
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.snippet-file-item.is-active,
+.snippet-entry-item.is-active,
+.snippet-file-item:hover,
+.snippet-entry-item:hover {
+  border-color: rgba(212, 120, 42, 0.5);
+  background: rgba(212, 120, 42, 0.08);
+}
+
+.snippet-trash-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  min-width: 30px;
+  border: 0;
+  border-radius: calc(var(--radius) - 2px);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.snippet-trash-btn:hover {
+  background: rgba(224, 85, 85, 0.14);
+  color: #ef8b8b;
+}
+
+.snippet-file-path,
+.snippet-entry-name {
+  font-size: 13px;
+}
+
+.snippet-file-meta,
+.snippet-entry-meta {
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.snippet-entry-item .snippet-item-main {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+
+.snippet-entry-name {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.snippet-entry-item .snippet-entry-meta {
+  margin-top: 0;
+  flex-shrink: 0;
+  max-width: 42%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: right;
+}
+
+.snippet-editor-layout {
+  display: grid;
+  grid-template-columns: 340px minmax(420px, 680px);
+  gap: 14px;
+  justify-content: start;
+  align-items: stretch;
+  min-height: 0;
+  flex: 1;
+}
+
+.snippet-entry-pane,
+.snippet-form-pane {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg2);
+}
+
+.snippet-form-pane {
+  width: min(100%, 680px);
+  align-self: start;
+}
+
+.snippet-help-box {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px solid rgba(212, 120, 42, 0.24);
+  border-radius: var(--radius);
+  background: rgba(212, 120, 42, 0.08);
+}
+
+.snippet-help-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: #f0b37b;
+}
+
+.snippet-help-item {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.snippet-list-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.snippet-form-pane .textarea {
+  min-height: 180px;
+  max-height: 320px;
+  flex: 0 0 auto;
+}
+
+.snippet-form-footer {
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 8px;
+}
+
+.snippet-form-footer #snippet-save-file-btn {
+  flex: 0 0 auto;
+  min-width: 120px;
+  margin-left: auto;
+}
