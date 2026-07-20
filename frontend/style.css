@@ -617,7 +617,7 @@ select {
   font-size: 12px;
 }
 
-input[type="search"], input[type="text"], input[type="number"], textarea {
+input[type="search"], input[type="text"], input[type="number"], textarea, select {
   background: var(--bg);
   color: var(--text);
   border: 1px solid var(--border);
@@ -625,6 +625,11 @@ input[type="search"], input[type="text"], input[type="number"], textarea {
   padding: 4px 8px;
   font-size: 12px;
   font-family: inherit;
+}
+
+input:focus, textarea:focus, select:focus {
+  outline: none;
+  border-color: var(--accent);
 }
 
 textarea { resize: vertical; }
