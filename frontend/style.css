@@ -677,6 +677,12 @@ textarea.auto-grow {
   color: var(--accent);
 }
 
+#btn-seq-save { margin-left: auto; }
+#btn-seq-save.is-dirty {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
 .seq-time {
   flex: none;
   font-size: 11px;

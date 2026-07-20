@@ -50,6 +50,7 @@ const seqState = {
   paletteFolder: "", // パレットで選択中のフォルダ rel
   paletteExpanded: new Set([""]), // 展開中フォルダ
   loop: false, // ループ再生
+  dirty: false, // 未保存の変更があるか
   busy: false,
 };
 
@@ -124,9 +125,13 @@ function renderList() {
 }
 
 async function selectSequence(id) {
+  if (id === seqState.currentId) return;
+  // 未保存の変更があれば確認
+  if (seqState.dirty && !confirm("未保存の変更があります。破棄して切り替えますか？")) return;
   stopPlayback();
   seqState.currentId = id;
   seqState.selectedNode = null;
+  seqState.dirty = false;
   try {
     seqState.seq = await api(`/api/sequences/${id}`);
   } catch (e) {
@@ -136,6 +141,7 @@ async function selectSequence(id) {
   renderList();
   renderGraph();
   renderBgm();
+  updateSaveButton();
   if (seqState.seq && seqState.seq.nodes.length) fitView();
   loadSequenceIntoPlayer();
 }
@@ -177,33 +183,46 @@ async function loadSequenceIntoPlayer() {
 // 保存
 // ---------------------------------------------------------------------------
 
-let saveTimer = null;
-function saveGraph(immediate = false) {
+// 変更は保存ボタンを押すまで確定しない（未保存フラグを立てるだけ）
+function markDirty() {
   if (!seqState.seq) return;
-  clearTimeout(saveTimer);
-  const doSave = async () => {
-    const payload = {
-      nodes: seqState.seq.nodes.map((n) => ({
-        id: n.id,
-        item_id: n.item_id,
-        file: n.file,
-        x: n.x,
-        y: n.y,
-      })),
-      edges: seqState.seq.edges,
-    };
-    try {
-      const updated = await apiJson(`/api/sequences/${seqState.currentId}`, "PATCH", payload);
-      // resolved なノード情報で置き換え（missing / thumb 更新）
-      seqState.seq.nodes = updated.nodes;
-      seqState.seq.edges = updated.edges;
-      await loadList();
-    } catch (e) {
-      setSeqStatus(e.message, true);
-    }
+  seqState.dirty = true;
+  updateSaveButton();
+}
+
+function updateSaveButton() {
+  const btn = $("#btn-seq-save");
+  if (!btn) return;
+  btn.disabled = !seqState.seq || !seqState.dirty;
+  btn.classList.toggle("is-dirty", !!seqState.dirty);
+}
+
+async function saveSequence() {
+  if (!seqState.seq || !seqState.dirty) return;
+  const payload = {
+    nodes: seqState.seq.nodes.map((n) => ({
+      id: n.id,
+      item_id: n.item_id,
+      file: n.file,
+      x: n.x,
+      y: n.y,
+    })),
+    edges: seqState.seq.edges,
+    bgm: seqState.seq.bgm || null,
   };
-  if (immediate) doSave();
-  else saveTimer = setTimeout(doSave, 500);
+  try {
+    const updated = await apiJson(`/api/sequences/${seqState.currentId}`, "PATCH", payload);
+    // resolved なノード情報で置き換え（missing / thumb 更新）
+    seqState.seq.nodes = updated.nodes;
+    seqState.seq.edges = updated.edges;
+    seqState.seq.bgm = updated.bgm || null;
+    seqState.dirty = false;
+    updateSaveButton();
+    await loadList();
+    setSeqStatus("保存しました");
+  } catch (e) {
+    setSeqStatus(e.message, true);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -368,7 +387,7 @@ function renderEdges(preview) {
         (x) => !(x.src === e.src && x.dst === e.dst)
       );
       renderGraph();
-      saveGraph();
+      markDirty();
     });
     svg.append(path, hit);
   }
@@ -406,7 +425,7 @@ function addNodeAt(v, gx, gy) {
     missing: false,
   });
   renderGraph();
-  saveGraph();
+  markDirty();
   setSeqStatus("ノードを追加しました");
 }
 
@@ -428,7 +447,7 @@ function removeNode(id) {
   if (seqState.selectedNode === id) seqState.selectedNode = null;
   stopPlayback();
   renderGraph();
-  saveGraph();
+  markDirty();
 }
 
 function addEdge(src, dst) {
@@ -450,7 +469,7 @@ function addEdge(src, dst) {
   }
   seqState.seq.edges.push({ src, dst });
   renderGraph();
-  saveGraph();
+  markDirty();
 }
 
 // ---------------------------------------------------------------------------
@@ -564,7 +583,7 @@ function startNodeDrag(id, e) {
     document.removeEventListener("mousemove", onMove);
     document.removeEventListener("mouseup", onUp);
     if (moved) {
-      saveGraph();
+      markDirty();
     } else {
       // クリック = 選択してそのノードから再生
       seqState.selectedNode = id;
@@ -1029,19 +1048,15 @@ function setupBgmDrop(drop) {
   });
 }
 
-async function setSequenceBgm(file, volume) {
+function setSequenceBgm(file, volume) {
   if (!seqState.seq) return;
-  const body = file
-    ? { bgm: { file, volume: volume ?? seqState.seq.bgm?.volume ?? 0.8 } }
-    : { bgm: null };
-  try {
-    const updated = await apiJson(`/api/sequences/${seqState.currentId}`, "PATCH", body);
-    seqState.seq.bgm = updated.bgm || null;
-    applyBgmToPlayback();
-    renderBgm();
-  } catch (e) {
-    setSeqStatus(e.message, true);
-  }
+  // ローカルに反映（保存ボタンで確定）
+  seqState.seq.bgm = file
+    ? { file, volume: volume ?? seqState.seq.bgm?.volume ?? 0.8 }
+    : null;
+  markDirty();
+  applyBgmToPlayback();
+  renderBgm();
 }
 
 // 現在の再生状態に BGM を同期させる
@@ -1247,6 +1262,12 @@ function previewClip(v) {
 
 async function exportSequence() {
   if (!seqState.seq || seqState.busy) return;
+  // 書き出しはサーバー保存済みの内容を使うので、未保存なら先に保存
+  if (seqState.dirty) {
+    if (!confirm("未保存の変更があります。保存してから書き出します。")) return;
+    await saveSequence();
+    if (seqState.dirty) return; // 保存に失敗
+  }
   seqState.busy = true;
   const btn = $("#btn-seq-export");
   btn.disabled = true;
@@ -1303,13 +1324,17 @@ export function initSequenceView() {
     if (!seqState.seq) return;
     const name = await showInputDialog("シーケンス名:", seqState.seq.name);
     if (!name || name === seqState.seq.name) return;
+    // 名前だけ即時保存（グラフには触れないので未保存の編集は保持される）
+    seqState.seq.name = name;
     try {
-      seqState.seq = await apiJson(`/api/sequences/${seqState.currentId}`, "PATCH", { name });
+      await apiJson(`/api/sequences/${seqState.currentId}`, "PATCH", { name });
       await loadList();
     } catch (e) {
       setSeqStatus(e.message, true);
     }
   });
+
+  $("#btn-seq-save").addEventListener("click", saveSequence);
 
   $("#btn-seq-delete").addEventListener("click", async () => {
     if (!seqState.seq) return;
@@ -1319,8 +1344,10 @@ export function initSequenceView() {
       stopPlayback();
       seqState.currentId = null;
       seqState.seq = null;
+      seqState.dirty = false;
       await loadList();
       renderGraph();
+      updateSaveButton();
     } catch (e) {
       setSeqStatus(e.message, true);
     }
