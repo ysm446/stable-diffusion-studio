@@ -74,13 +74,22 @@ body {
 .panes[hidden] { display: none; }
 
 .pane-resizer {
-  background: var(--border);
+  background: transparent;
   cursor: col-resize;
+  display: flex;
+  justify-content: center;
+}
+
+/* 当たり判定は 6px 幅のまま、見た目は中央の 1px ラインだけ */
+.pane-resizer::before {
+  content: "";
+  width: 1px;
+  background: var(--border);
   transition: background 0.15s;
 }
 
-.pane-resizer:hover,
-.pane-resizer.is-dragging { background: var(--accent); }
+.pane-resizer:hover::before,
+.pane-resizer.is-dragging::before { background: var(--accent); }
 
 .pane {
   display: flex;
