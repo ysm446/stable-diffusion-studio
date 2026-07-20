@@ -28,7 +28,13 @@ const state = {
     workflow: "",
   },
   genVideo: { prompt: "", workflow: "", width: "", height: "", frames: "", seed: -1 },
+  rootInfo: null, // /api/library/root の結果
 };
+
+function rootName() {
+  const root = state.rootInfo?.root || "";
+  return root.split(/[\\/]/).filter(Boolean).pop() || "ライブラリ";
+}
 
 const $ = (sel) => document.querySelector(sel);
 
@@ -104,7 +110,8 @@ function buildTreeList(node, isRoot) {
   if (state.folder === node.rel) row.classList.add("is-selected");
 
   const label = document.createElement("span");
-  label.textContent = isRoot ? "📚 ライブラリ" : `📁 ${node.name}`;
+  label.textContent = isRoot ? `📚 ${rootName()}` : `📁 ${node.name}`;
+  if (isRoot) label.title = state.rootInfo?.root || "";
   row.appendChild(label);
 
   if (node.item_count > 0) {
@@ -574,7 +581,8 @@ async function saveGenSettings() {
 
 function renderFolderContext(el) {
   const h = document.createElement("h2");
-  h.textContent = state.folder === null ? "未選択" : state.folder || "ライブラリ（ルート）";
+  h.textContent =
+    state.folder === null ? "未選択" : state.folder || `${rootName()}（ルート）`;
   el.appendChild(h);
 
   if (state.folder === null) {
@@ -949,8 +957,10 @@ function renderItemContext(el, item) {
 async function loadRoot() {
   try {
     const res = await api("/api/library/root");
+    state.rootInfo = res;
     $("#root-path").textContent = res.root;
     $("#root-path").title = `ライブラリの保存先: ${res.root}`;
+    if (state.tree) renderTree();
     return res;
   } catch {
     return null;
@@ -1040,12 +1050,12 @@ async function refresh() {
 }
 
 run(async () => {
-  const [, saved, options] = await Promise.all([
+  const [, , saved, options] = await Promise.all([
     loadTree(),
+    loadRoot(),
     api("/api/settings").catch(() => ({})),
     api("/api/generation/options").catch(() => null),
   ]);
-  loadRoot();
   if (options) state.options = options;
   if (saved.gen_image) Object.assign(state.genImage, saved.gen_image);
   if (saved.gen_video) Object.assign(state.genVideo, saved.gen_video);
