@@ -453,6 +453,39 @@ body {
   overflow: hidden;
 }
 
+/* ---------------------------------------------------------------- dialog */
+
+.dialog-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  background: rgba(0, 0, 0, 0.5);
+  display: grid;
+  place-items: center;
+}
+
+.dialog-box {
+  background: var(--bg-pane);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px;
+  min-width: 320px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
+}
+
+.dialog-title { font-size: 13px; }
+
+.dialog-box input { width: 100%; }
+
+.dialog-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 /* ---------------------------------------------------------- context menu */
 
 .context-menu {

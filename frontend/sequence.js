@@ -3,6 +3,8 @@
  * 左: シーケンス一覧 / 中央: プレビュー + クリップ並び / 右: クリップパレット
  */
 
+import { showInputDialog } from "/frontend/dialog.js";
+
 const $ = (sel) => document.querySelector(sel);
 
 async function api(path, options = {}) {
@@ -333,7 +335,7 @@ async function exportSequence() {
 
 export function initSequenceView() {
   $("#btn-seq-new").addEventListener("click", async () => {
-    const name = prompt("シーケンス名:", "新しいシーケンス");
+    const name = await showInputDialog("シーケンス名:", "新しいシーケンス");
     if (name === null) return;
     try {
       const seq = await apiJson("/api/sequences", "POST", { name });
@@ -346,7 +348,7 @@ export function initSequenceView() {
 
   $("#btn-seq-rename").addEventListener("click", async () => {
     if (!seqState.seq) return;
-    const name = prompt("シーケンス名:", seqState.seq.name);
+    const name = await showInputDialog("シーケンス名:", seqState.seq.name);
     if (!name || name === seqState.seq.name) return;
     try {
       seqState.seq = await apiJson(`/api/sequences/${seqState.currentId}`, "PATCH", { name });

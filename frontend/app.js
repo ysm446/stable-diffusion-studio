@@ -4,6 +4,7 @@
  */
 
 import { initSequenceView, activateSequenceView } from "/frontend/sequence.js";
+import { showInputDialog } from "/frontend/dialog.js";
 
 const state = {
   tree: null,
@@ -178,7 +179,7 @@ function requireFolder() {
 
 $("#btn-folder-new").addEventListener("click", async () => {
   if (!requireFolder()) return;
-  const name = prompt("新しいフォルダ名:");
+  const name = await showInputDialog("新しいフォルダ名:");
   if (!name) return;
   await run(async () => {
     const res = await apiJson("/api/library/folders", "POST", {
@@ -197,7 +198,7 @@ $("#btn-folder-rename").addEventListener("click", async () => {
     return;
   }
   const current = state.folder.split("/").pop();
-  const name = prompt("新しいフォルダ名:", current);
+  const name = await showInputDialog("新しいフォルダ名:", current);
   if (!name || name === current) return;
   await run(async () => {
     const res = await apiJson("/api/library/folders/rename", "POST", {
@@ -966,7 +967,7 @@ $("#btn-root").addEventListener("click", async (e) => {
     path = await window.electronAPI.selectFolder(current?.root);
     if (!path) return; // キャンセル
   } else {
-    path = prompt("ライブラリの保存先フォルダ（絶対パス）:", current?.root || "");
+    path = await showInputDialog("ライブラリの保存先フォルダ（絶対パス）:", current?.root || "");
     if (path === null) return;
   }
   await run(async () => {
