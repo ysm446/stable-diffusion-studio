@@ -746,6 +746,9 @@ textarea { resize: vertical; }
 /* ------------------------------------------------------------- statusbar */
 
 .statusbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
   border-top: 1px solid var(--border);
   background: var(--bg-pane);
   padding: 3px 10px;
@@ -754,4 +757,42 @@ textarea { resize: vertical; }
   font-size: 12px;
 }
 
+.statusbar #status { flex: 1; min-width: 0; }
 .statusbar .error { color: var(--danger); }
+
+.sysstats {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex: none;
+}
+
+.sys-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.sys-label { color: var(--text-dim); }
+
+.sys-meter {
+  width: 54px;
+  height: 7px;
+  border-radius: 4px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  overflow: hidden;
+}
+
+.sys-fill {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+}
+
+.sys-text {
+  color: var(--text);
+  min-width: 60px;
+}

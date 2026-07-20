@@ -1445,6 +1445,42 @@ function startStatusPolling() {
   $("#service-status").addEventListener("click", refreshServiceStatus);
 }
 
+// システムリソース（GPU / VRAM / CPU / RAM） ---------------------------------
+
+let sysPollTimer = null;
+
+function bar(label, pct, text) {
+  const p = Math.max(0, Math.min(100, pct || 0));
+  return (
+    `<span class="sys-item"><span class="sys-label">${label}</span>` +
+    `<span class="sys-meter"><span class="sys-fill" style="width:${p}%"></span></span>` +
+    `<span class="sys-text">${text}</span></span>`
+  );
+}
+
+async function refreshSystemStats() {
+  const el = $("#sysstats");
+  try {
+    const s = await api("/api/status/system");
+    const parts = [];
+    if (s.gpu_util !== null) parts.push(bar("GPU", s.gpu_util, `${Math.round(s.gpu_util)}%`));
+    if (s.vram_total)
+      parts.push(bar("VRAM", (s.vram_used / s.vram_total) * 100, `${s.vram_used}/${s.vram_total}GB`));
+    if (s.cpu_util !== null) parts.push(bar("CPU", s.cpu_util, `${Math.round(s.cpu_util)}%`));
+    if (s.ram_total)
+      parts.push(bar("RAM", (s.ram_used / s.ram_total) * 100, `${s.ram_used}/${s.ram_total}GB`));
+    el.innerHTML = parts.join("");
+  } catch {
+    el.innerHTML = "";
+  }
+}
+
+function startSystemPolling() {
+  refreshSystemStats();
+  clearInterval(sysPollTimer);
+  sysPollTimer = setInterval(refreshSystemStats, 2000);
+}
+
 // ペインのリサイズ ----------------------------------------------------------
 
 const PANE_LIMITS = { left: [150, 500], right: [260, 720] };
@@ -1613,6 +1649,7 @@ run(async () => {
   if (saved.gen_video) Object.assign(state.genVideo, saved.gen_video);
   initPaneResizers(saved.pane_widths);
   startStatusPolling();
+  startSystemPolling();
   const p = new URLSearchParams(location.hash.slice(1));
   const itemId = p.get("item");
   const videoPanel = p.get("video") === "1";

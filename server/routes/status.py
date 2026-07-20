@@ -75,3 +75,49 @@ def get_status() -> dict[str, Any]:
     with ThreadPoolExecutor(max_workers=len(checks)) as pool:
         services = list(pool.map(lambda fn: fn(), checks))
     return {"services": services}
+
+
+# ---------------------------------------------------------------------------
+# システムリソース（GPU / VRAM / CPU / RAM）
+# ---------------------------------------------------------------------------
+
+try:
+    import psutil as _psutil
+except ImportError:
+    _psutil = None
+
+try:
+    import pynvml as _pynvml
+
+    _pynvml.nvmlInit()
+    _NVML_HANDLE = _pynvml.nvmlDeviceGetHandleByIndex(0)
+except Exception:
+    _pynvml = None
+    _NVML_HANDLE = None
+
+
+@router.get("/system")
+def system_stats() -> dict[str, Any]:
+    result: dict[str, float | None] = {
+        "gpu_util": None,
+        "vram_used": None,
+        "vram_total": None,
+        "cpu_util": None,
+        "ram_used": None,
+        "ram_total": None,
+    }
+    if _psutil is not None:
+        result["cpu_util"] = _psutil.cpu_percent(interval=None)
+        vm = _psutil.virtual_memory()
+        result["ram_used"] = round(vm.used / 1024**3, 1)
+        result["ram_total"] = round(vm.total / 1024**3, 1)
+    if _pynvml is not None and _NVML_HANDLE is not None:
+        try:
+            util = _pynvml.nvmlDeviceGetUtilizationRates(_NVML_HANDLE)
+            mem = _pynvml.nvmlDeviceGetMemoryInfo(_NVML_HANDLE)
+            result["gpu_util"] = float(util.gpu)
+            result["vram_used"] = round(mem.used / 1024**3, 1)
+            result["vram_total"] = round(mem.total / 1024**3, 1)
+        except Exception:
+            pass
+    return result
