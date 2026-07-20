@@ -125,41 +125,68 @@ def read_a1111_metadata(image: Image.Image) -> dict | None:
 _NEG_KEYWORDS = ("negative", "ネガティブ", "neg")
 
 
-def read_comfyui_metadata(image: Image.Image) -> dict | None:
-    """
-    ComfyUI 生成画像の PNG メタデータからプロンプトを読み取る。
-    'prompt' キーに API format JSON が埋め込まれている。
-    CLIPTextEncode ノードのタイトルに 'negative'/'ネガティブ'/'neg' が含まれれば
-    ネガティブ、それ以外はポジティブとして扱う。
-    メタデータがない場合は None を返す。
-    """
-    prompt_json = image.info.get("prompt", "")
-    if not prompt_json:
-        return None
+# 動画（i2v）系の latent ノード：フレーム数・サイズを持つ
+_VIDEO_LATENT_NODES = (
+    "EmptyHunyuanLatentVideo",
+    "WanImageToVideo",
+    "WanVideoToVideo",
+    "EmptyWanLatentVideo",
+    "EmptyLTXVLatentVideo",
+    "LTXVBaseSampler",
+)
+_LATENT_NODES = (
+    "EmptyLatentImage",
+    "EmptySD3LatentImage",
+    "EmptyLatentImageSD3",
+    *_VIDEO_LATENT_NODES,
+)
+_FRAMES_KEYS = ("length", "num_frames", "video_frames", "frames")
 
+
+def parse_comfyui_graph(prompt_json: str) -> dict | None:
+    """ComfyUI の API-format prompt JSON からプロンプト・seed・サイズ・フレーム数を抽出する。
+
+    CLIPTextEncode（タイトルに negative 系を含めば negative、他は positive）、
+    KSampler / RandomNoise の seed、latent ノードの width/height/length を読む。
+    抽出できなければ None。
+    """
     try:
-        workflow = json.loads(prompt_json)
+        graph = json.loads(prompt_json)
     except (json.JSONDecodeError, TypeError):
+        return None
+    if not isinstance(graph, dict):
         return None
 
     positive = ""
     negative = ""
     seed = None
-    for node in workflow.values():
+    width = height = frames = None
+
+    # 他ノードの negative 入力に接続された CLIPTextEncode を negative とみなす補助
+    negative_ids: set[str] = set()
+    for node in graph.values():
+        if isinstance(node, dict):
+            for field, val in (node.get("inputs", {}) or {}).items():
+                if field == "negative" and isinstance(val, list) and val:
+                    negative_ids.add(str(val[0]))
+
+    for node_id, node in graph.items():
         if not isinstance(node, dict):
             continue
         class_type = node.get("class_type", "")
         inputs = node.get("inputs", {}) or {}
+        title = (node.get("_meta", {}).get("title", "") or "").lower()
 
         if class_type == "CLIPTextEncode":
-            title = (node.get("_meta", {}).get("title", "") or "").lower()
             text = inputs.get("text", "")
-            if any(kw in title for kw in _NEG_KEYWORDS):
-                negative = text
+            if not isinstance(text, str):
+                continue
+            if any(kw in title for kw in _NEG_KEYWORDS) or str(node_id) in negative_ids:
+                negative = negative or text
             else:
-                positive = text
+                positive = positive or text
 
-        if seed is None and class_type in ("KSampler", "KSamplerAdvanced"):
+        if seed is None and class_type in ("KSampler", "KSamplerAdvanced", "RandomNoise"):
             for key in ("seed", "noise_seed"):
                 if key in inputs:
                     try:
@@ -169,10 +196,35 @@ def read_comfyui_metadata(image: Image.Image) -> dict | None:
                     if seed is not None:
                         break
 
-    if not positive and not negative and seed is None:
+        if class_type in _LATENT_NODES:
+            if width is None and isinstance(inputs.get("width"), (int, float)):
+                width = int(inputs["width"])
+            if height is None and isinstance(inputs.get("height"), (int, float)):
+                height = int(inputs["height"])
+            if frames is None and class_type in _VIDEO_LATENT_NODES:
+                for k in _FRAMES_KEYS:
+                    if isinstance(inputs.get(k), (int, float)):
+                        frames = int(inputs[k])
+                        break
+
+    if not (positive or negative or seed is not None or frames is not None):
         return None
 
-    result = {"positive": positive, "negative": negative}
+    result: dict = {"positive": positive, "negative": negative}
     if seed is not None:
         result["seed"] = seed
+    if width is not None:
+        result["width"] = width
+    if height is not None:
+        result["height"] = height
+    if frames is not None:
+        result["frames"] = frames
     return result
+
+
+def read_comfyui_metadata(image: Image.Image) -> dict | None:
+    """ComfyUI 生成画像の PNG メタデータ（'prompt' チャンク）からプロンプトを読み取る。"""
+    prompt_json = image.info.get("prompt", "")
+    if not prompt_json:
+        return None
+    return parse_comfyui_graph(prompt_json)

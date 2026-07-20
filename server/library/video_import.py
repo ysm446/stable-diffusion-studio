@@ -78,15 +78,34 @@ def probe(video_bytes: bytes, ext: str = ".mp4") -> dict[str, Any]:
 
         # 埋め込みタグ（ComfyUI/VHS のワークフロー・プロンプト等）
         tags = {str(k).lower(): v for k, v in (fmt.get("tags") or {}).items()}
-        for key in _PROMPT_TAG_KEYS:
-            if tags.get(key):
-                candidate = str(tags[key]).strip()
-                # JSON（ワークフロー丸ごと）はプロンプトにせず metadata に残す
-                if candidate and not candidate.startswith("{"):
-                    prompt = candidate
+
+        # ComfyUI が埋め込む API-format prompt（JSON）から
+        # ポジティブ/ネガティブ・seed・サイズ・フレーム数を抽出する
+        from server.library import png_meta
+
+        for value in tags.values():
+            text = str(value).strip()
+            if not text.startswith("{"):
+                continue
+            parsed = png_meta.parse_comfyui_graph(text)
+            if not parsed:
+                continue
+            if parsed.get("positive"):
+                prompt = parsed["positive"]
+            if parsed.get("negative"):
+                settings["negative_prompt"] = parsed["negative"]
+            for key in ("seed", "frames", "width", "height"):
+                if parsed.get(key) is not None:
+                    settings[key] = parsed[key]
+            break
+
+        # JSON でないプレーンなプロンプトタグ（description/comment）も拾う
+        if not prompt:
+            for key in _PROMPT_TAG_KEYS:
+                cand = str(tags.get(key, "")).strip()
+                if cand and not cand.startswith("{"):
+                    prompt = cand
                     break
-        if tags:
-            settings["metadata"] = tags
     except (OSError, ValueError, subprocess.SubprocessError):
         pass
     finally:
