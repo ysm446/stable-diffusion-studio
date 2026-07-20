@@ -122,6 +122,34 @@ function buildTreeList(node, isRoot) {
   }
 
   row.addEventListener("click", () => selectFolder(node.rel));
+  row.addEventListener("contextmenu", (e) => {
+    e.preventDefault();
+    if (state.folder !== node.rel) selectFolder(node.rel);
+    const entries = [
+      {
+        label: "📁 新規フォルダ（この中に）",
+        action: () => createFolderIn(node.rel),
+      },
+      {
+        label: "📂 エクスプローラーで開く",
+        action: () => revealFolder(node.rel),
+      },
+    ];
+    if (!isRoot) {
+      entries.push(
+        {
+          label: "✎ 名前の変更",
+          action: () => renameFolderRel(node.rel),
+        },
+        {
+          label: "🗑 削除",
+          danger: true,
+          action: () => deleteFolderRel(node.rel),
+        }
+      );
+    }
+    showContextMenu(e.clientX, e.clientY, entries);
+  });
   setupFolderDrop(row, node.rel);
   li.appendChild(row);
 
@@ -184,46 +212,42 @@ function requireFolder() {
   return true;
 }
 
-$("#btn-folder-new").addEventListener("click", async () => {
-  if (!requireFolder()) return;
+async function createFolderIn(parentRel) {
   const name = await showInputDialog("新しいフォルダ名:");
   if (!name) return;
   await run(async () => {
     const res = await apiJson("/api/library/folders", "POST", {
-      parent: state.folder,
+      parent: parentRel,
       name,
     });
     await loadTree();
     await selectFolder(res.rel);
   }, "フォルダを作成しました");
-});
+}
 
-$("#btn-folder-rename").addEventListener("click", async () => {
-  if (!requireFolder()) return;
-  if (state.folder === "") {
+async function renameFolderRel(rel) {
+  if (rel === "") {
     setStatus("ルートはリネームできません", true);
     return;
   }
-  const current = state.folder.split("/").pop();
+  const current = rel.split("/").pop();
   const name = await showInputDialog("新しいフォルダ名:", current);
   if (!name || name === current) return;
   await run(async () => {
     const res = await apiJson("/api/library/folders/rename", "POST", {
-      rel: state.folder,
+      rel,
       new_name: name,
     });
     await loadTree();
     await selectFolder(res.rel);
   }, "リネームしました");
-});
+}
 
-$("#btn-folder-delete").addEventListener("click", async () => {
-  if (!requireFolder()) return;
-  if (state.folder === "") {
+async function deleteFolderRel(rel) {
+  if (rel === "") {
     setStatus("ルートは削除できません", true);
     return;
   }
-  const rel = state.folder;
   if (!confirm(`フォルダ「${rel}」を削除しますか？\n中の画像・動画もすべて削除されます。`)) return;
   await run(async () => {
     await api(
@@ -231,8 +255,30 @@ $("#btn-folder-delete").addEventListener("click", async () => {
       { method: "DELETE" }
     );
     await loadTree();
-    await selectFolder("");
+    await selectFolder(rel.split("/").slice(0, -1).join("/"));
   }, "フォルダを削除しました");
+}
+
+async function revealFolder(rel) {
+  await run(
+    () => apiJson("/api/library/folders/reveal", "POST", { rel }),
+    "エクスプローラーで開きました"
+  );
+}
+
+$("#btn-folder-new").addEventListener("click", async () => {
+  if (!requireFolder()) return;
+  await createFolderIn(state.folder);
+});
+
+$("#btn-folder-rename").addEventListener("click", async () => {
+  if (!requireFolder()) return;
+  await renameFolderRel(state.folder);
+});
+
+$("#btn-folder-delete").addEventListener("click", async () => {
+  if (!requireFolder()) return;
+  await deleteFolderRel(state.folder);
 });
 
 // ---------------------------------------------------------------------------
@@ -389,7 +435,7 @@ function showContextMenu(x, y, entries) {
 
 document.addEventListener("click", hideContextMenu);
 document.addEventListener("contextmenu", (e) => {
-  if (!e.target.closest(".card")) hideContextMenu();
+  if (!e.target.closest(".card, .tree-node")) hideContextMenu();
 });
 window.addEventListener("blur", hideContextMenu);
 document.addEventListener("keydown", (e) => {

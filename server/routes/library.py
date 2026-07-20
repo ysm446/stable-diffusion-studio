@@ -113,6 +113,25 @@ def delete_folder(rel: str, recursive: bool = False) -> dict[str, bool]:
     return {"ok": True}
 
 
+class FolderReveal(BaseModel):
+    rel: str = ""
+
+
+@router.post("/folders/reveal")
+def reveal_folder(body: FolderReveal) -> dict[str, bool]:
+    """フォルダをエクスプローラーで開く。"""
+    import os
+    import subprocess
+
+    target = _wrap(paths.resolve_rel, body.rel)
+    if not target.is_dir():
+        raise HTTPException(status_code=404, detail="folder not found")
+    if os.name != "nt":
+        raise HTTPException(status_code=400, detail="Windows のみ対応しています")
+    subprocess.Popen(["explorer", str(target)])
+    return {"ok": True}
+
+
 # ---------------------------------------------------------------------------
 # アイテム
 # ---------------------------------------------------------------------------
