@@ -1514,12 +1514,12 @@ async function refreshSystemStats() {
   try {
     const s = await api("/api/status/system");
     const parts = [];
-    if (s.gpu_util !== null) parts.push(bar("GPU", s.gpu_util, `${Math.round(s.gpu_util)}%`));
-    if (s.vram_total)
-      parts.push(bar("VRAM", (s.vram_used / s.vram_total) * 100, `${s.vram_used}/${s.vram_total}GB`));
     if (s.cpu_util !== null) parts.push(bar("CPU", s.cpu_util, `${Math.round(s.cpu_util)}%`));
     if (s.ram_total)
       parts.push(bar("RAM", (s.ram_used / s.ram_total) * 100, `${s.ram_used}/${s.ram_total}GB`));
+    if (s.gpu_util !== null) parts.push(bar("GPU", s.gpu_util, `${Math.round(s.gpu_util)}%`));
+    if (s.vram_total)
+      parts.push(bar("VRAM", (s.vram_used / s.vram_total) * 100, `${s.vram_used}/${s.vram_total}GB`));
     el.innerHTML = parts.join("");
   } catch {
     el.innerHTML = "";
