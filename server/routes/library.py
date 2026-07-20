@@ -228,6 +228,25 @@ def delete_item(item_id: str) -> dict[str, bool]:
     return {"ok": True}
 
 
+class ItemsDelete(BaseModel):
+    ids: list[str]
+
+
+@router.post("/items/delete")
+def delete_items(body: ItemsDelete) -> dict[str, Any]:
+    """複数アイテムを一括削除する。"""
+    deleted = 0
+    for item_id in body.ids:
+        try:
+            items.delete_item(item_id)
+            deleted += 1
+        except items.NotFound:
+            continue
+        except OSError as e:
+            raise HTTPException(status_code=400, detail=f"削除に失敗しました: {e}")
+    return {"ok": True, "deleted": deleted}
+
+
 @router.post("/items/{item_id}/reveal")
 def reveal_item(item_id: str) -> dict[str, bool]:
     """アイテムの画像ファイルをエクスプローラーで選択表示する。"""

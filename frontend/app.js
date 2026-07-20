@@ -11,6 +11,8 @@ const state = {
   folder: null, // 選択中フォルダ rel（"" はルート、null は未選択）
   items: [],
   selectedId: null,
+  selectedIds: new Set(), // 複数選択（一括削除用）
+  anchorIndex: null, // Shift 選択の起点
   currentItem: null, // 選択中画像の詳細（動画一覧を含む）
   selectedVideoFile: null, // 下部ストリップで選択中の動画 file
   query: "",
@@ -207,6 +209,8 @@ function updateHash() {
 async function selectFolder(rel) {
   state.folder = rel;
   state.selectedId = null;
+  state.selectedIds = new Set();
+  state.anchorIndex = null;
   state.videoPanel = false;
   state.query = "";
   $("#search").value = "";
@@ -329,11 +333,12 @@ function renderGrid() {
     }</p>`;
     return;
   }
-  for (const item of state.items) {
+  state.items.forEach((item, index) => {
     const card = document.createElement("div");
     card.className = "card";
     card.dataset.id = item.id;
-    if (item.id === state.selectedId) card.classList.add("is-selected");
+    if (state.selectedIds.has(item.id)) card.classList.add("is-selected");
+    if (item.id === state.selectedId) card.classList.add("is-focused");
     card.draggable = true;
     card.addEventListener("dragstart", (e) => {
       internalDragId = item.id;
@@ -387,44 +392,110 @@ function renderGrid() {
     caption.textContent = item.prompt || item.caption || item.id;
     card.appendChild(caption);
 
-    card.addEventListener("click", () => selectItem(item.id));
+    card.addEventListener("click", (e) => handleCardClick(item.id, index, e));
     card.addEventListener("contextmenu", (e) => {
       e.preventDefault();
-      if (state.selectedId !== item.id) selectItem(item.id);
-      showContextMenu(e.clientX, e.clientY, [
-        {
-          label: "✨ この設定で新規生成",
-          action: async () => {
-            const full = await run(() => api(`/api/library/items/${item.id}`));
-            if (full) useItemForGeneration(full);
-          },
-        },
-        {
-          label: "📂 ファイルの場所を開く",
-          action: () => revealItem(item.id),
-        },
-        {
-          label: "🎞 動画を生成...",
-          action: async () => {
-            await selectItem(item.id);
-            state.videoPanel = true;
-            updateHash();
-            await renderContext();
-          },
-        },
-        {
-          label: "🗑 削除",
+      // 複数選択されていて右クリックがその中なら選択を維持、そうでなければ単一選択に
+      if (!state.selectedIds.has(item.id)) {
+        state.selectedIds = new Set([item.id]);
+        state.anchorIndex = index;
+        selectItem(item.id);
+      }
+      const multi = state.selectedIds.size > 1;
+      const entries = [];
+      if (multi) {
+        const ids = [...state.selectedIds];
+        entries.push({
+          label: `🗑 選択した ${ids.length} 件を削除`,
           danger: true,
-          action: () => deleteItemById(item.id, item.video_count || 0),
-        },
-      ]);
+          action: () => bulkDelete(ids),
+        });
+      } else {
+        entries.push(
+          {
+            label: "✨ この設定で新規生成",
+            action: async () => {
+              const full = await run(() => api(`/api/library/items/${item.id}`));
+              if (full) useItemForGeneration(full);
+            },
+          },
+          { label: "📂 ファイルの場所を開く", action: () => revealItem(item.id) },
+          {
+            label: "🎞 動画を生成...",
+            action: async () => {
+              await selectItem(item.id);
+              state.videoPanel = true;
+              updateHash();
+              await renderContext();
+            },
+          },
+          {
+            label: "🗑 削除",
+            danger: true,
+            action: () => deleteItemById(item.id, item.video_count || 0),
+          }
+        );
+      }
+      showContextMenu(e.clientX, e.clientY, entries);
     });
     grid.appendChild(card);
+  });
+}
+
+// カードのクリック（修飾キーで複数選択）
+function handleCardClick(itemId, index, e) {
+  if (e.shiftKey && state.anchorIndex != null) {
+    // 範囲選択
+    const [a, b] = [state.anchorIndex, index].sort((x, y) => x - y);
+    state.selectedIds = new Set(state.items.slice(a, b + 1).map((it) => it.id));
+    state.selectedId = itemId;
+    state.currentItem = null;
+    state.selectedVideoFile = null;
+    renderGrid();
+    renderVideoStrip();
+    renderContext();
+  } else if (e.ctrlKey || e.metaKey) {
+    // トグル選択
+    if (state.selectedIds.has(itemId)) state.selectedIds.delete(itemId);
+    else state.selectedIds.add(itemId);
+    state.anchorIndex = index;
+    // フォーカスは選択が残っていれば最後にクリックしたもの
+    state.selectedId = state.selectedIds.has(itemId)
+      ? itemId
+      : [...state.selectedIds].at(-1) || null;
+    state.currentItem = null;
+    state.selectedVideoFile = null;
+    renderGrid();
+    renderVideoStrip();
+    renderContext();
+  } else {
+    // 単一選択
+    state.selectedIds = new Set([itemId]);
+    state.anchorIndex = index;
+    selectItem(itemId);
   }
+}
+
+async function bulkDelete(ids) {
+  if (!ids.length) return;
+  const totalVideos = state.items
+    .filter((it) => ids.includes(it.id))
+    .reduce((n, it) => n + (it.video_count || 0), 0);
+  const warn = totalVideos > 0 ? `\n紐づく動画 ${totalVideos} 件も削除されます。` : "";
+  if (!confirm(`選択した ${ids.length} 件の画像を削除しますか？${warn}`)) return;
+  await run(async () => {
+    const res = await apiJson("/api/library/items/delete", "POST", { ids });
+    state.selectedIds = new Set();
+    state.selectedId = null;
+    state.currentItem = null;
+    await refresh();
+    setStatus(`${res.deleted} 件を削除しました`);
+  });
 }
 
 async function selectItem(itemId) {
   state.selectedId = itemId;
+  state.selectedIds = new Set([itemId]);
   state.selectedVideoFile = null;
   state.videoPanel = false;
   state.currentItem = await run(() => api(`/api/library/items/${itemId}`));
@@ -440,8 +511,8 @@ function renderVideoStrip() {
   const list = $("#video-strip-list");
   const item = state.currentItem;
   const videos = (item && item.videos) || [];
-  // 画像を選択している間は常に表示（動画ファイルのドロップ受け口にする）
-  if (!state.selectedId) {
+  // 単一選択のときだけ表示（複数選択中は非表示）
+  if (!state.selectedId || state.selectedIds.size > 1) {
     strip.hidden = true;
     list.innerHTML = "";
     return;
@@ -486,6 +557,7 @@ async function deleteItemById(itemId, videoCount = 0) {
   await run(async () => {
     await api(`/api/library/items/${itemId}`, { method: "DELETE" });
     if (state.selectedId === itemId) state.selectedId = null;
+    state.selectedIds.delete(itemId);
     await refresh();
   }, "画像を削除しました");
 }
@@ -700,6 +772,18 @@ grid.addEventListener("drop", async (e) => {
   if (e.dataTransfer.files.length > 0) await importFiles(e.dataTransfer.files);
 });
 
+// Del キーで選択画像を一括削除（テキスト入力中は無効）
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "Delete") return;
+  const tag = (document.activeElement?.tagName || "").toLowerCase();
+  if (tag === "input" || tag === "textarea" || document.activeElement?.isContentEditable) return;
+  // ライブラリタブでのみ
+  if ($("#view-library").hidden) return;
+  if (state.selectedIds.size === 0) return;
+  e.preventDefault();
+  bulkDelete([...state.selectedIds]);
+});
+
 // ---------------------------------------------------------------------------
 // 右パネル
 // ---------------------------------------------------------------------------
@@ -707,6 +791,11 @@ grid.addEventListener("drop", async (e) => {
 async function renderContext() {
   const el = $("#context");
   el.innerHTML = "";
+  // 複数選択中はまとめて操作するパネルを出す
+  if (state.selectedIds.size > 1) {
+    renderMultiSelectContext(el);
+    return;
+  }
   if (state.selectedId) {
     let item = state.currentItem;
     if (!item) item = state.currentItem = await run(() => api(`/api/library/items/${state.selectedId}`));
@@ -729,6 +818,35 @@ async function renderContext() {
     state.currentItem = null;
   }
   renderFolderContext(el);
+}
+
+function renderMultiSelectContext(el) {
+  const ids = [...state.selectedIds];
+  const h = document.createElement("h2");
+  h.textContent = `${ids.length} 件を選択中`;
+  el.appendChild(h);
+
+  const info = document.createElement("div");
+  info.className = "placeholder";
+  info.textContent =
+    "Ctrl+クリックで追加/解除、Shift+クリックで範囲選択。\nDel キーまたは下のボタンで一括削除できます。";
+  info.style.whiteSpace = "pre-wrap";
+  el.appendChild(info);
+
+  const delBtn = document.createElement("button");
+  delBtn.className = "danger";
+  delBtn.textContent = `🗑 選択した ${ids.length} 件を削除`;
+  delBtn.addEventListener("click", () => bulkDelete(ids));
+  el.appendChild(delBtn);
+
+  const clearBtn = document.createElement("button");
+  clearBtn.textContent = "選択を解除";
+  clearBtn.addEventListener("click", () => {
+    state.selectedIds = new Set(state.selectedId ? [state.selectedId] : []);
+    renderGrid();
+    renderContext();
+  });
+  el.appendChild(clearBtn);
 }
 
 function field(labelText, valueText) {

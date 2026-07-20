@@ -347,6 +347,7 @@ body {
 
 .card:hover { border-color: var(--text-dim); }
 .card.is-selected { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.card.is-focused { box-shadow: 0 0 0 2px var(--accent); }
 
 /* 並べ替えのドロップ位置インジケーター */
 .card.drop-before { box-shadow: -3px 0 0 var(--accent); }
