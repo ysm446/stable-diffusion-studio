@@ -46,6 +46,9 @@ const seqState = {
   playToken: 0, // 再生の世代。古い loadedmetadata コールバックを無効化する
   transport: null, // { nodes, durations, offsets, total }
   bgmList: [], // ライブラリの BGM 一覧
+  paletteTree: null, // フォルダツリー
+  paletteFolder: "", // パレットで選択中のフォルダ rel
+  paletteExpanded: new Set([""]), // 展開中フォルダ
   busy: false,
 };
 
@@ -1026,24 +1029,114 @@ function applyBgmToPlayback() {
 // ---------------------------------------------------------------------------
 
 async function loadPalette() {
-  seqState.videos = (await api("/api/library/videos")).videos;
+  const [videos, tree] = await Promise.all([
+    api("/api/library/videos").then((r) => r.videos).catch(() => []),
+    api("/api/library/tree").catch(() => null),
+  ]);
+  seqState.videos = videos;
+  seqState.paletteTree = tree;
   renderPalette();
+}
+
+// フォルダ rel 以下（再帰）の動画数
+function paletteVideoCount(rel) {
+  return seqState.videos.filter((v) => {
+    const f = v.folder || "";
+    return rel === "" ? true : f === rel || f.startsWith(rel + "/");
+  }).length;
 }
 
 function renderPalette() {
   const el = $("#seq-palette");
   el.innerHTML = "";
   const q = seqState.filter.toLowerCase();
-  const videos = seqState.videos.filter(
-    (v) =>
-      !q ||
-      (v.prompt || "").toLowerCase().includes(q) ||
-      (v.item_prompt || "").toLowerCase().includes(q) ||
-      (v.workflow || "").toLowerCase().includes(q) ||
-      (v.folder || "").toLowerCase().includes(q)
+
+  // 検索中はフォルダ横断で結果を出す
+  if (q) {
+    const hits = seqState.videos.filter(
+      (v) =>
+        (v.prompt || "").toLowerCase().includes(q) ||
+        (v.item_prompt || "").toLowerCase().includes(q) ||
+        (v.workflow || "").toLowerCase().includes(q) ||
+        (v.folder || "").toLowerCase().includes(q)
+    );
+    renderClipCards(el, hits, "検索結果がありません");
+    return;
+  }
+
+  // フォルダツリー
+  if (seqState.paletteTree) {
+    const treeWrap = document.createElement("div");
+    treeWrap.className = "palette-tree";
+    treeWrap.appendChild(buildPaletteTree(seqState.paletteTree, true));
+    el.appendChild(treeWrap);
+  }
+
+  // 選択フォルダ直下のクリップ（非再帰）
+  const clips = seqState.videos.filter((v) => (v.folder || "") === seqState.paletteFolder);
+  const list = document.createElement("div");
+  list.className = "palette-clips";
+  renderClipCards(
+    list,
+    clips,
+    "このフォルダに動画はありません（サブフォルダを選択してください）"
   );
+  el.appendChild(list);
+}
+
+function buildPaletteTree(node, isRoot) {
+  const ul = document.createElement("ul");
+  const li = document.createElement("li");
+  const row = document.createElement("div");
+  row.className = "palette-tree-node";
+  if (seqState.paletteFolder === node.rel) row.classList.add("is-selected");
+
+  const hasChildren = node.children && node.children.length > 0;
+  const expanded = seqState.paletteExpanded.has(node.rel);
+
+  const toggle = document.createElement("span");
+  toggle.className = "palette-tree-toggle";
+  toggle.textContent = hasChildren ? (expanded ? "▼" : "▶") : "";
+  toggle.addEventListener("click", (e) => {
+    e.stopPropagation();
+    if (!hasChildren) return;
+    if (expanded) seqState.paletteExpanded.delete(node.rel);
+    else seqState.paletteExpanded.add(node.rel);
+    renderPalette();
+  });
+  row.appendChild(toggle);
+
+  const label = document.createElement("span");
+  label.className = "palette-tree-label";
+  label.textContent = isRoot ? "📚 ライブラリ" : `📁 ${node.name}`;
+  row.appendChild(label);
+
+  const count = paletteVideoCount(node.rel);
+  const badge = document.createElement("span");
+  badge.className = "palette-tree-count";
+  badge.textContent = count > 0 ? `🎞 ${count}` : "";
+  row.appendChild(badge);
+
+  row.addEventListener("click", () => {
+    seqState.paletteFolder = node.rel;
+    seqState.paletteExpanded.add(node.rel);
+    renderPalette();
+  });
+  li.appendChild(row);
+
+  if (hasChildren && expanded) {
+    for (const child of node.children) li.appendChild(buildPaletteTree(child, false));
+  }
+  ul.appendChild(li);
+  return ul;
+}
+
+function renderClipCards(container, videos, emptyMsg) {
   if (videos.length === 0) {
-    el.innerHTML = '<p class="grid-empty">ライブラリに動画がありません</p>';
+    const p = document.createElement("p");
+    p.className = "grid-empty";
+    p.textContent = emptyMsg || "動画がありません";
+    container.appendChild(p);
     return;
   }
   for (const v of videos) {
@@ -1069,7 +1162,7 @@ function renderPalette() {
     add.title = "ノードとして追加";
     add.addEventListener("click", () => addNodeFromVideo(v));
     card.appendChild(add);
-    el.appendChild(card);
+    container.appendChild(card);
   }
 }
 

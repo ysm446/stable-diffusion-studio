@@ -813,6 +813,64 @@ textarea.auto-grow {
   gap: 6px;
 }
 
+/* パレットのフォルダツリー */
+.palette-tree {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px;
+  max-height: 240px;
+  overflow: auto;
+  margin-bottom: 6px;
+}
+
+.palette-tree ul {
+  list-style: none;
+  margin: 0;
+  padding-left: 12px;
+}
+
+.palette-tree > ul { padding-left: 0; }
+
+.palette-tree-node {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 4px;
+  border-radius: 4px;
+  cursor: pointer;
+  white-space: nowrap;
+  font-size: 12px;
+}
+
+.palette-tree-node:hover { background: var(--bg-hover); }
+.palette-tree-node.is-selected { background: var(--bg-active); }
+
+.palette-tree-toggle {
+  width: 12px;
+  flex: none;
+  color: var(--text-dim);
+  font-size: 9px;
+}
+
+.palette-tree-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.palette-tree-count {
+  flex: none;
+  color: var(--text-dim);
+  font-size: 10px;
+}
+
+.palette-clips {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
 .palette-card {
   display: flex;
   align-items: center;
