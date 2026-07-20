@@ -62,19 +62,36 @@ def unload_model() -> dict[str, Any]:
     return {"ok": True, "message": llm_client.unload_model()}
 
 
-# 動画プロンプト生成の system プロンプト（旧 Image Assistant より）
-_VIDEO_SYSTEM_PROMPT = """\
-あなたは画像から動画（image-to-video）を生成するためのプロンプトエンジニアです。
-提供された画像・画像プロンプト・追加指示を元に、動画生成用のプロンプトを1つ書いてください。
+# 動画プロンプト生成のセクションテンプレートと system プロンプト（旧 Image Assistant より）
+_SECTION_TEMPLATES = {
+    "scene": "**Scene**: [Describe the visual scene in detail based on the image]",
+    "action": "**Action**: [Describe the motion/movement to add - be specific about what moves and how]",
+    "camera": "**Camera**: [Describe camera movement: static, slow pan, zoom in/out, dolly, tracking, etc.]",
+    "style": "**Style**: [Describe the visual style and mood]",
+    "prompt": (
+        "---\n**Final Prompt for WAN 2.2**:\n"
+        "[Write a single paragraph combining all elements. "
+        "This should be copy-paste ready for WAN 2.2. "
+        "Write in English, be concise but descriptive. "
+        "Focus on motion and cinematic qualities.]"
+    ),
+}
+ALL_SECTIONS = list(_SECTION_TEMPLATES.keys())
 
-現在の画像プロンプト: {image_prompt}
+_VIDEO_SYSTEM_PROMPT_TEMPLATE = """\
+あなたはWan2.2動画生成のプロンプトエンジニアリングの専門家です。
+提供された画像・画像プロンプト・追加指示を元に、以下のセクションを順番に出力してください。
+
+現在の画像プロンプト: {positive_prompt}
+
+出力するセクション（指定されたものだけ出力してください）:
+{sections_text}
 
 ルール:
-- 出力は動画プロンプト本文のみ（前置き・見出し・コメント・引用符は不要）
-- 英語で、1段落・簡潔かつ具体的に書く
-- 静止画に「どんな動き・変化・カメラワークを加えるか」を中心に描写する
-  （被写体の動作、髪や布・光の揺らぎ、カメラのパン/ズーム/ドリー等）
-- 追加指示があれば最優先で反映する
+- 指定されたセクションのみを出力してください（他のセクション・前置き・コメント不要）
+- 各セクションは簡潔に1-2文で書いてください。
+- 英語で記述してください
+- 動きや変化・雰囲気を具体的に記述してください
 """
 
 
@@ -84,6 +101,11 @@ async def video_prompt(request: Request):
     item_id = body.get("item_id", "")
     extra = (body.get("extra_instruction") or "").strip()
     requested_model = (body.get("model") or "").strip()
+    sections = body.get("sections") or ALL_SECTIONS
+    # 指定順序ではなく定義順で、選択されたものだけ
+    active = [s for s in ALL_SECTIONS if s in sections]
+    if not active:
+        raise HTTPException(status_code=400, detail="セクションを1つ以上選択してください")
 
     try:
         meta = items.get_item(item_id)
@@ -93,12 +115,12 @@ async def video_prompt(request: Request):
         raise HTTPException(status_code=404, detail="画像が見つかりません")
 
     image_prompt = meta.get("prompt") or ""
-    system_content = _VIDEO_SYSTEM_PROMPT.format(image_prompt=image_prompt or "（なし）")
-    user_text = (
-        f"追加指示: {extra}\n\n動画プロンプトを生成してください。"
-        if extra
-        else "動画プロンプトを生成してください。"
+    sections_text = "\n".join(_SECTION_TEMPLATES[name] for name in active)
+    system_content = _VIDEO_SYSTEM_PROMPT_TEMPLATE.format(
+        positive_prompt=image_prompt or "（なし）",
+        sections_text=sections_text,
     )
+    user_text = f"追加指示: {extra}\n\n動画プロンプトを生成してください。"
 
     def worker(send) -> None:
         # 未ロードなら自動ロード（指定モデル → 前回モデル → 先頭）

@@ -27,10 +27,21 @@ const state = {
     seed: -1,
     workflow: "",
   },
-  genVideo: { prompt: "", workflow: "", width: "", height: "", frames: "", seed: -1, extra: "" },
+  genVideo: {
+    prompt: "",
+    workflow: "",
+    width: "",
+    height: "",
+    frames: "",
+    seed: -1,
+    extra: "",
+    sections: ["scene", "action", "camera", "style", "prompt"],
+  },
   rootInfo: null, // /api/library/root の結果
   llm: { models: [], loaded: null, selected: "" },
 };
+
+const VIDEO_SECTIONS = ["scene", "action", "camera", "style", "prompt"];
 
 function rootName() {
   const root = state.rootInfo?.root || "";
@@ -939,6 +950,7 @@ function renderVideoGenContext(el, item) {
     if (vs) {
       g.prompt = vs.prompt ?? "";
       g.extra = vs.extra_instruction ?? "";
+      if (Array.isArray(vs.sections) && vs.sections.length) g.sections = vs.sections;
       g.workflow = vs.workflow ?? g.workflow;
       g.width = vs.width ?? "";
       g.height = vs.height ?? "";
@@ -1023,6 +1035,32 @@ function renderVideoGenContext(el, item) {
   // モデル一覧・ロード状態を取得して行を更新
   loadLlmModels().then(renderModelRow);
 
+  // 生成するセクションのチェックボックス
+  const secWrap = document.createElement("div");
+  secWrap.className = "field";
+  secWrap.innerHTML = "<label>生成するセクション</label>";
+  const secRow = document.createElement("div");
+  secRow.className = "section-checks";
+  if (!Array.isArray(g.sections)) g.sections = [...VIDEO_SECTIONS];
+  for (const name of VIDEO_SECTIONS) {
+    const lbl = document.createElement("label");
+    lbl.className = "section-check";
+    const cb = document.createElement("input");
+    cb.type = "checkbox";
+    cb.checked = g.sections.includes(name);
+    cb.addEventListener("change", () => {
+      if (cb.checked) {
+        if (!g.sections.includes(name)) g.sections.push(name);
+      } else {
+        g.sections = g.sections.filter((s) => s !== name);
+      }
+    });
+    lbl.append(cb, document.createTextNode(" " + name));
+    secRow.appendChild(lbl);
+  }
+  secWrap.appendChild(secRow);
+  llmBox.appendChild(secWrap);
+
   const genPromptBtn = document.createElement("button");
   genPromptBtn.className = "primary";
   genPromptBtn.textContent = "✨ 動画プロンプトを生成";
@@ -1101,6 +1139,11 @@ async function generateVideoPrompt(btn, itemId, promptField) {
     setGenStatus("models/ フォルダに GGUF モデルが見つかりません", true);
     return;
   }
+  const sections = state.genVideo.sections || [];
+  if (sections.length === 0) {
+    setGenStatus("生成するセクションを1つ以上選んでください", true);
+    return;
+  }
   btn.disabled = true;
   btn.textContent = "生成中...";
   let text = "";
@@ -1111,6 +1154,7 @@ async function generateVideoPrompt(btn, itemId, promptField) {
         item_id: itemId,
         extra_instruction: state.genVideo.extra,
         model: state.llm.selected || state.llm.models[0],
+        sections,
       },
       (ev) => {
         if (ev.type === "status") {
@@ -1142,6 +1186,7 @@ function currentVideoSettings() {
   return {
     prompt: g.prompt,
     extra_instruction: g.extra || "",
+    sections: g.sections || VIDEO_SECTIONS,
     workflow: g.workflow,
     width: g.width,
     height: g.height,

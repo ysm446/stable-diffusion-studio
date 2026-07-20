@@ -567,6 +567,23 @@ textarea.auto-grow {
 .llm-model-row .field { flex: 1; }
 .llm-model-row button { flex: none; }
 
+.section-checks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+}
+
+.section-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.section-check input { accent-color: var(--accent); cursor: pointer; }
+
 /* --------------------------------------------------------------- similar */
 
 .similar-results {
