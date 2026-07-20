@@ -43,6 +43,7 @@ const seqState = {
   playOrder: [],
   playPos: -1,
   playHighlight: null,
+  playToken: 0, // 再生の世代。古い loadedmetadata コールバックを無効化する
   transport: null, // { nodes, durations, offsets, total }
   bgmList: [], // ライブラリの BGM 一覧
   busy: false,
@@ -153,6 +154,10 @@ async function loadSequenceIntoPlayer() {
   seqState.transport = t;
   seqState.playPos = -1;
   seqState.playHighlight = null;
+  seqState.playToken++; // 保留中の再生開始コールバックを無効化
+  player.onended = null;
+  player.ontimeupdate = null;
+  player.onloadedmetadata = null;
   if (t.nodes.length) {
     player.src = clipUrl(t.nodes[0]);
     player.load?.();
@@ -615,11 +620,13 @@ function stopPlayback() {
   seqState.playPos = -1;
   seqState.playOrder = [];
   seqState.transport = null;
+  seqState.playToken++; // 保留中の再生開始コールバックを無効化
   const player = $("#seq-player");
   if (player) {
     player.pause();
     player.onended = null;
     player.ontimeupdate = null;
+    player.onloadedmetadata = null;
   }
   updateTransportUI(0, 0);
   setPlayToggle(false);
@@ -734,7 +741,9 @@ function playAt(pos, seekInClip = 0, opts = {}) {
 
   const player = $("#seq-player");
   const url = clipUrl(node);
+  const token = ++seqState.playToken;
   const startPlayback = () => {
+    if (token !== seqState.playToken) return; // 古い世代のコールバックは無視
     if (seekInClip > 0) {
       try {
         player.currentTime = seekInClip;
@@ -746,6 +755,7 @@ function playAt(pos, seekInClip = 0, opts = {}) {
     if (opts.bgmGlobal != null) syncBgm(opts.bgmGlobal);
     else startBgm();
   };
+  player.onloadedmetadata = null;
   if (player.src !== new URL(url, location.href).href) {
     player.src = url;
     player.onloadedmetadata = startPlayback;
@@ -776,10 +786,12 @@ function resetToHead() {
   const t = seqState.transport;
   seqState.playPos = -1;
   seqState.playHighlight = null;
+  seqState.playToken++; // 保留中の再生開始コールバックを無効化
   renderGraph();
   const player = $("#seq-player");
   player.onended = null;
   player.ontimeupdate = null;
+  player.onloadedmetadata = null;
   if (t && t.nodes.length) {
     player.src = clipUrl(t.nodes[0]);
     player.load?.();
