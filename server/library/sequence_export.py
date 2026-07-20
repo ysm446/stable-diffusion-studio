@@ -169,4 +169,47 @@ def export_sequence(seq_id: str, status: StatusFn) -> dict[str, Any]:
             raise ExportError(f"ffmpeg 再エンコード失敗: {proc.stderr.strip()[-800:]}")
         mode = "reencode"
 
+    # BGM 合成（設定があれば、映像はそのまま・音声をループ BGM で付与）
+    bgm_conf = seq.get("bgm")
+    if bgm_conf and bgm_conf.get("file"):
+        out_path = _mux_bgm(out_path, bgm_conf, status)
+
     return {"path": str(out_path), "mode": mode, "clips": len(paths_list)}
+
+
+def _mux_bgm(video_path: Path, bgm_conf: dict[str, Any], status: StatusFn) -> Path:
+    """連結済み動画にループ BGM を合成する。映像は stream copy、音声のみ AAC。"""
+    from server.library import bgm as bgm_lib
+
+    try:
+        bgm_path = bgm_lib.path_for(str(bgm_conf["file"]))
+    except FileNotFoundError:
+        status("BGM が見つからないため音声なしで書き出しました")
+        return video_path
+
+    volume = bgm_conf.get("volume", 0.8)
+    try:
+        volume = max(0.0, min(1.0, float(volume)))
+    except (TypeError, ValueError):
+        volume = 0.8
+
+    status("BGM を合成中...")
+    with_bgm = video_path.with_name(video_path.stem + "_bgm" + video_path.suffix)
+    proc = _run(
+        [
+            "ffmpeg", "-y",
+            "-i", str(video_path),
+            "-stream_loop", "-1", "-i", str(bgm_path),
+            "-filter:a", f"volume={volume}",
+            "-map", "0:v", "-map", "1:a",
+            "-c:v", "copy", "-c:a", "aac", "-b:a", "256k",
+            "-shortest",
+            str(with_bgm),
+        ]
+    )
+    if proc.returncode != 0:
+        status(f"BGM 合成に失敗したため音声なしで書き出しました: {proc.stderr.strip()[-300:]}")
+        with_bgm.unlink(missing_ok=True)
+        return video_path
+    video_path.unlink(missing_ok=True)
+    return with_bgm

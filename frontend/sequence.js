@@ -44,6 +44,7 @@ const seqState = {
   playPos: -1,
   playHighlight: null,
   transport: null, // { nodes, durations, offsets, total }
+  bgmList: [], // ライブラリの BGM 一覧
   busy: false,
 };
 
@@ -129,6 +130,7 @@ async function selectSequence(id) {
   }
   renderList();
   renderGraph();
+  renderBgm();
   if (seqState.seq && seqState.seq.nodes.length) fitView();
   loadSequenceIntoPlayer();
 }
@@ -621,11 +623,26 @@ function stopPlayback() {
   }
   updateTransportUI(0, 0);
   setPlayToggle(false);
+  pauseBgm();
 }
 
 function setPlayToggle(playing) {
   const btn = $("#seq-play-toggle");
   if (btn) btn.textContent = playing ? "⏸" : "▶";
+}
+
+function startBgm() {
+  const bgm = seqState.seq?.bgm;
+  if (!bgm || !bgm.file) return;
+  const audio = $("#seq-bgm-audio");
+  const url = `/api/library/bgm/${encodeURIComponent(bgm.file)}/file`;
+  if (audio.src !== new URL(url, location.href).href) audio.src = url;
+  audio.volume = bgm.volume ?? 0.8;
+  audio.play().catch(() => {});
+}
+
+function pauseBgm() {
+  $("#seq-bgm-audio").pause();
 }
 
 function updateTransportUI(cur, total) {
@@ -697,6 +714,7 @@ function playAt(pos, seekInClip = 0) {
     }
     player.play().catch(() => {});
     setPlayToggle(true);
+    startBgm();
   };
   if (player.src !== new URL(url, location.href).href) {
     player.src = url;
@@ -738,6 +756,7 @@ function resetToHead() {
   }
   updateTransportUI(0, t ? t.total : 0);
   setPlayToggle(false);
+  pauseBgm();
 }
 
 function togglePlay() {
@@ -754,9 +773,181 @@ function togglePlay() {
   if (player.paused) {
     player.play().catch(() => {});
     setPlayToggle(true);
+    startBgm();
   } else {
     player.pause();
     setPlayToggle(false);
+    pauseBgm();
+  }
+}
+
+// ---------------------------------------------------------------------------
+// BGM
+// ---------------------------------------------------------------------------
+
+async function loadBgm() {
+  try {
+    seqState.bgmList = (await api("/api/library/bgm")).bgm;
+  } catch {
+    seqState.bgmList = [];
+  }
+  renderBgm();
+}
+
+function renderBgm() {
+  const el = $("#seq-bgm");
+  el.innerHTML = "";
+
+  const head = document.createElement("div");
+  head.className = "seq-bgm-head";
+  head.textContent = "🎵 BGM";
+  el.appendChild(head);
+
+  // このシーケンスの BGM 選択
+  if (seqState.seq) {
+    const cur = seqState.seq.bgm || {};
+    const row = document.createElement("div");
+    row.className = "seq-bgm-select";
+    const sel = document.createElement("select");
+    const none = document.createElement("option");
+    none.value = "";
+    none.textContent = "（なし）";
+    sel.appendChild(none);
+    for (const b of seqState.bgmList) {
+      const opt = document.createElement("option");
+      opt.value = b.name;
+      opt.textContent = b.name;
+      sel.appendChild(opt);
+    }
+    sel.value = cur.file || "";
+    sel.addEventListener("change", () => setSequenceBgm(sel.value));
+    row.appendChild(sel);
+    el.appendChild(row);
+
+    // 音量
+    const vol = document.createElement("input");
+    vol.type = "range";
+    vol.min = "0";
+    vol.max = "1";
+    vol.step = "0.05";
+    vol.value = cur.volume ?? 0.8;
+    vol.title = "BGM 音量";
+    vol.addEventListener("input", () => {
+      const audio = $("#seq-bgm-audio");
+      audio.volume = parseFloat(vol.value);
+    });
+    vol.addEventListener("change", () => {
+      if (seqState.seq?.bgm) setSequenceBgm(seqState.seq.bgm.file, parseFloat(vol.value));
+    });
+    el.appendChild(vol);
+  }
+
+  // BGM ファイル一覧（ドロップで追加・削除）
+  const drop = document.createElement("div");
+  drop.className = "seq-bgm-drop";
+  drop.id = "seq-bgm-drop";
+  drop.textContent = "🎵 mp3 をここにドロップして追加";
+  el.appendChild(drop);
+
+  const list = document.createElement("div");
+  list.className = "seq-bgm-list";
+  for (const b of seqState.bgmList) {
+    const item = document.createElement("div");
+    item.className = "seq-bgm-item";
+    const play = document.createElement("button");
+    play.textContent = "▶";
+    play.title = "試聴";
+    play.addEventListener("click", () => {
+      const a = new Audio(`/api/library/bgm/${encodeURIComponent(b.name)}/file`);
+      a.play().catch(() => {});
+    });
+    const name = document.createElement("span");
+    name.className = "seq-bgm-name";
+    name.textContent = b.name;
+    name.title = b.name;
+    const del = document.createElement("button");
+    del.className = "danger";
+    del.textContent = "✕";
+    del.title = "BGM を削除";
+    del.addEventListener("click", async () => {
+      if (!confirm(`BGM「${b.name}」を削除しますか？`)) return;
+      await api(`/api/library/bgm/${encodeURIComponent(b.name)}`, { method: "DELETE" });
+      await loadBgm();
+    });
+    item.append(play, name, del);
+    list.appendChild(item);
+  }
+  el.appendChild(list);
+
+  setupBgmDrop(drop);
+}
+
+function setupBgmDrop(drop) {
+  drop.addEventListener("dragover", (e) => {
+    if ([...e.dataTransfer.types].includes("Files")) {
+      e.preventDefault();
+      drop.classList.add("is-drop-target");
+    }
+  });
+  drop.addEventListener("dragleave", () => drop.classList.remove("is-drop-target"));
+  drop.addEventListener("drop", async (e) => {
+    drop.classList.remove("is-drop-target");
+    if (e.dataTransfer.files.length === 0) return;
+    e.preventDefault();
+    const audio = [...e.dataTransfer.files].filter((f) =>
+      /\.(mp3|wav|m4a|aac|ogg|flac)$/i.test(f.name)
+    );
+    if (audio.length === 0) {
+      setSeqStatus("音声ファイル（mp3 等）をドロップしてください", true);
+      return;
+    }
+    for (const file of audio) {
+      const form = new FormData();
+      form.append("file", file);
+      try {
+        await api("/api/library/bgm", { method: "POST", body: form });
+      } catch (err) {
+        setSeqStatus(err.message, true);
+      }
+    }
+    setSeqStatus(`${audio.length} 件の BGM を追加しました`);
+    await loadBgm();
+  });
+}
+
+async function setSequenceBgm(file, volume) {
+  if (!seqState.seq) return;
+  const body = file
+    ? { bgm: { file, volume: volume ?? seqState.seq.bgm?.volume ?? 0.8 } }
+    : { bgm: null };
+  try {
+    const updated = await apiJson(`/api/sequences/${seqState.currentId}`, "PATCH", body);
+    seqState.seq.bgm = updated.bgm || null;
+    applyBgmToPlayback();
+    renderBgm();
+  } catch (e) {
+    setSeqStatus(e.message, true);
+  }
+}
+
+// 現在の再生状態に BGM を同期させる
+function applyBgmToPlayback() {
+  const audio = $("#seq-bgm-audio");
+  const bgm = seqState.seq?.bgm;
+  const player = $("#seq-player");
+  if (!bgm || !bgm.file) {
+    audio.pause();
+    audio.removeAttribute("src");
+    return;
+  }
+  const url = `/api/library/bgm/${encodeURIComponent(bgm.file)}/file`;
+  if (audio.src !== new URL(url, location.href).href) audio.src = url;
+  audio.volume = bgm.volume ?? 0.8;
+  // 動画が再生中なら BGM も再生、止まっていれば止める
+  if (player && !player.paused && seqState.playPos >= 0) {
+    audio.play().catch(() => {});
+  } else {
+    audio.pause();
   }
 }
 
@@ -949,11 +1140,12 @@ export function initSequenceView() {
 }
 
 export async function activateSequenceView() {
-  await Promise.all([loadList(), loadPalette()]);
+  await Promise.all([loadList(), loadPalette(), loadBgm()]);
   if (!seqState.currentId && seqState.list.length > 0) {
     await selectSequence(seqState.list[0].id);
   } else {
     applyView();
     renderGraph();
+    renderBgm();
   }
 }

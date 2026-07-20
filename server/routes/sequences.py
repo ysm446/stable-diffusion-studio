@@ -31,6 +31,7 @@ class SequenceUpdate(BaseModel):
     name: str | None = None
     nodes: list[dict[str, Any]] | None = None
     edges: list[dict[str, Any]] | None = None
+    bgm: dict[str, Any] | None = None
 
 
 @router.get("")

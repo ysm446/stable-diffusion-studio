@@ -736,6 +736,64 @@ textarea.auto-grow {
 .seq-port.out { right: -7px; }
 .seq-port:hover { background: var(--accent); }
 
+/* BGM セクション */
+.seq-bgm {
+  border-bottom: 1px solid var(--border);
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.seq-bgm-head { font-size: 12px; color: var(--accent); }
+.seq-bgm-select { display: flex; }
+.seq-bgm-select select { flex: 1; }
+.seq-bgm input[type="range"] { width: 100%; accent-color: var(--accent); }
+
+.seq-bgm-drop {
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+  padding: 8px;
+  text-align: center;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.seq-bgm-drop.is-drop-target {
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+.seq-bgm-list {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  max-height: 140px;
+  overflow: auto;
+}
+
+.seq-bgm-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+}
+
+.seq-bgm-item button {
+  flex: none;
+  padding: 1px 6px;
+  font-size: 11px;
+}
+
+.seq-bgm-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-dim);
+}
+
 .seq-palette {
   flex: 1;
   overflow: auto;

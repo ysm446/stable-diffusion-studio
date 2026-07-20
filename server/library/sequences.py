@@ -183,6 +183,19 @@ def update_sequence(seq_id: str, fields: dict[str, Any]) -> dict[str, Any]:
         name = str(fields["name"]).strip()
         if name:
             seq["name"] = name
+    if "bgm" in fields:
+        bgm = fields["bgm"]
+        if bgm is None or bgm == {}:
+            seq.pop("bgm", None)
+        elif isinstance(bgm, dict) and bgm.get("file"):
+            vol = bgm.get("volume", 0.8)
+            try:
+                vol = max(0.0, min(1.0, float(vol)))
+            except (TypeError, ValueError):
+                vol = 0.8
+            seq["bgm"] = {"file": str(bgm["file"]), "volume": vol}
+        else:
+            raise SequenceError(f"invalid bgm: {bgm!r}")
     if "nodes" in fields:
         seq["nodes"] = _validate_nodes(fields["nodes"])
     if "edges" in fields:

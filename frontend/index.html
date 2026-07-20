@@ -106,14 +106,16 @@
         </div>
       </section>
 
-      <!-- 右: クリップパレット -->
+      <!-- 右: BGM + クリップパレット -->
       <aside class="pane pane-context">
+        <div id="seq-bgm" class="seq-bgm"></div>
         <div class="pane-toolbar">
           <input type="search" id="seq-palette-search" placeholder="クリップを検索">
         </div>
         <div id="seq-palette" class="seq-palette"></div>
       </aside>
     </main>
+    <audio id="seq-bgm-audio" loop></audio>
 
     <footer class="statusbar">
       <span id="status"></span>

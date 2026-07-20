@@ -10,7 +10,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from server import settings
-from server.library import embeddings, folders, index_db, items, paths
+from server.library import bgm, embeddings, folders, index_db, items, paths
 from server.streaming import make_sse_response
 
 router = APIRouter(prefix="/api/library")
@@ -327,6 +327,41 @@ def get_file(item_id: str, name: str):
 @router.get("/videos")
 def list_all_videos() -> dict[str, Any]:
     return {"videos": index_db.list_all_videos()}
+
+
+# ---------------------------------------------------------------------------
+# BGM
+# ---------------------------------------------------------------------------
+
+
+@router.get("/bgm")
+def list_bgm() -> dict[str, Any]:
+    return {"bgm": bgm.list_bgm()}
+
+
+@router.post("/bgm")
+async def add_bgm(file: UploadFile | None = None) -> dict[str, Any]:
+    if file is None:
+        raise HTTPException(status_code=400, detail="file is required")
+    data = await file.read()
+    return _wrap(bgm.add_bgm, data, file.filename or "bgm.mp3")
+
+
+@router.delete("/bgm/{name}")
+def delete_bgm(name: str) -> dict[str, bool]:
+    try:
+        bgm.delete_bgm(name)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="bgm not found")
+    return {"ok": True}
+
+
+@router.get("/bgm/{name}/file")
+def get_bgm_file(name: str):
+    try:
+        return FileResponse(str(bgm.path_for(name)))
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="bgm not found")
 
 
 @router.post("/reindex")
