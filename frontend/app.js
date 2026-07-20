@@ -440,14 +440,23 @@ function renderVideoStrip() {
   const list = $("#video-strip-list");
   const item = state.currentItem;
   const videos = (item && item.videos) || [];
-  if (!state.selectedId || videos.length === 0) {
+  // 画像を選択している間は常に表示（動画ファイルのドロップ受け口にする）
+  if (!state.selectedId) {
     strip.hidden = true;
     list.innerHTML = "";
     return;
   }
   strip.hidden = false;
-  $("#video-strip-title").textContent = `動画（${videos.length}）— クリックでプロパティ表示`;
+  $("#video-strip-title").textContent = videos.length
+    ? `動画（${videos.length}）— クリックでプロパティ / 動画ファイルをドロップで追加`
+    : "この画像に動画を追加：動画ファイルをここにドロップ";
   list.innerHTML = "";
+  if (videos.length === 0) {
+    const hint = document.createElement("div");
+    hint.className = "vstrip-empty";
+    hint.textContent = "🎞 生成済みの動画ファイルをドロップして登録";
+    list.appendChild(hint);
+  }
   for (const v of videos) {
     const card = document.createElement("div");
     card.className = "vstrip-card";
@@ -632,6 +641,48 @@ async function reorderItems(draggedId, targetId, after) {
     apiJson("/api/library/items/reorder", "POST", { folder: state.folder, order: ids })
   );
 }
+
+// 動画ストリップへの動画ファイルドロップ（選択画像に登録）
+const VIDEO_EXT = /\.(mp4|webm|avi|mov|mkv)$/i;
+
+async function importVideosToItem(files) {
+  if (!state.selectedId) return;
+  const vids = [...files].filter((f) => VIDEO_EXT.test(f.name));
+  if (vids.length === 0) {
+    setStatus("動画ファイル（mp4/webm/mov 等）をドロップしてください", true);
+    return;
+  }
+  let done = 0;
+  for (const file of vids) {
+    const form = new FormData();
+    form.append("file", file);
+    form.append("probe", "true"); // メタデータ抽出を有効化
+    const ok = await run(() =>
+      api(`/api/library/items/${state.selectedId}/videos`, { method: "POST", body: form })
+    );
+    if (ok) done += 1;
+  }
+  setStatus(`${done} / ${vids.length} 件の動画を登録しました`);
+  await reloadCurrentItem();
+  await loadItems();
+}
+
+const videoStrip = $("#video-strip");
+videoStrip.addEventListener("dragover", (e) => {
+  if ([...e.dataTransfer.types].includes("Files")) {
+    e.preventDefault();
+    videoStrip.classList.add("is-drop-target");
+  }
+});
+videoStrip.addEventListener("dragleave", (e) => {
+  if (!videoStrip.contains(e.relatedTarget)) videoStrip.classList.remove("is-drop-target");
+});
+videoStrip.addEventListener("drop", async (e) => {
+  videoStrip.classList.remove("is-drop-target");
+  if (e.dataTransfer.files.length === 0) return;
+  e.preventDefault();
+  await importVideosToItem(e.dataTransfer.files);
+});
 
 const grid = $("#grid");
 grid.addEventListener("dragover", (e) => {

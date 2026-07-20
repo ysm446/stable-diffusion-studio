@@ -259,12 +259,36 @@ async def add_video(
     file: UploadFile | None = None,
     prompt: str = Form(""),
     workflow: str = Form(""),
+    probe: bool = Form(False),
 ) -> dict[str, Any]:
     if file is None:
         raise HTTPException(status_code=400, detail="file is required")
+    filename = file.filename or ""
+    ext = Path(filename).suffix.lower()
+    if ext not in (".mp4", ".webm", ".avi", ".mov", ".mkv"):
+        raise HTTPException(status_code=400, detail=f"未対応の動画形式です: {ext or '(不明)'}")
     data = await file.read()
-    ext = Path(file.filename or "").suffix.lower() or ".mp4"
-    return _wrap(items.add_video, item_id, data, ext=ext, prompt=prompt, workflow=workflow)
+
+    settings: dict[str, Any] = {}
+    # 取り込み時は ffprobe でメタデータ（解像度・fps・尺・埋め込みプロンプト）を抽出
+    if probe:
+        from server.library import video_import
+
+        info = video_import.probe(data, ext=ext)
+        settings = info["settings"]
+        settings["source_filename"] = filename
+        if not prompt and info["prompt"]:
+            prompt = info["prompt"]
+
+    return _wrap(
+        items.add_video,
+        item_id,
+        data,
+        ext=ext,
+        prompt=prompt,
+        workflow=workflow,
+        settings=settings or None,
+    )
 
 
 class VideoUpdate(BaseModel):
