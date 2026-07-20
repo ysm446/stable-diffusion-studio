@@ -1116,7 +1116,10 @@ function renderPalette() {
         (v.workflow || "").toLowerCase().includes(q) ||
         (v.folder || "").toLowerCase().includes(q)
     );
-    renderClipCards(el, hits, "検索結果がありません");
+    const list = document.createElement("div");
+    list.className = "palette-clips";
+    renderClipCards(list, hits, "検索結果がありません");
+    el.appendChild(list);
     return;
   }
 

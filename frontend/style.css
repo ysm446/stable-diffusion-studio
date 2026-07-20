@@ -933,21 +933,23 @@ textarea.auto-grow {
 
 .seq-palette {
   flex: 1;
-  overflow: auto;
+  min-height: 0;
+  overflow: hidden; /* ツリーとクリップ一覧を別々にスクロールさせる */
   padding: 8px;
   display: flex;
   flex-direction: column;
   gap: 6px;
 }
 
-/* パレットのフォルダツリー */
+/* パレットのフォルダツリー（独立スクロール。潰れないよう最小高さを確保） */
 .palette-tree {
+  flex: 0 1 auto;
   border: 1px solid var(--border);
   border-radius: 6px;
   padding: 4px;
-  max-height: 240px;
+  min-height: 80px;
+  max-height: 45%;
   overflow: auto;
-  margin-bottom: 6px;
 }
 
 .palette-tree ul {
@@ -993,6 +995,9 @@ textarea.auto-grow {
 }
 
 .palette-clips {
+  flex: 1 1 0;
+  min-height: 0;
+  overflow: auto; /* クリップ一覧だけスクロール */
   display: flex;
   flex-direction: column;
   gap: 6px;
