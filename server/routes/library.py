@@ -23,6 +23,8 @@ def _wrap(fn, *args, **kwargs):
         raise HTTPException(status_code=404, detail=str(e))
     except (items.LibraryError, folders.FolderError, ValueError) as e:
         raise HTTPException(status_code=400, detail=str(e))
+    except OSError as e:
+        raise HTTPException(status_code=400, detail=f"ファイル操作に失敗しました: {e}")
 
 
 # ---------------------------------------------------------------------------

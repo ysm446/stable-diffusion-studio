@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import io
 import shutil
+import time
 from pathlib import Path
 from typing import Any
 
@@ -24,6 +25,20 @@ class LibraryError(Exception):
 
 class NotFound(LibraryError):
     pass
+
+
+def _retry_fs(fn, attempts: int = 4, wait: float = 0.3):
+    """Windows の一時的なファイルロック（WinError 5/32）を短時間リトライする。"""
+    for i in range(attempts):
+        try:
+            return fn()
+        except PermissionError:
+            if i == attempts - 1:
+                raise LibraryError(
+                    "ファイルが使用中のため操作できません。"
+                    "エクスプローラーのウィンドウや再生中の動画を閉じてから再試行してください。"
+                )
+            time.sleep(wait)
 
 
 def item_dir(item_id: str) -> Path:
@@ -151,7 +166,7 @@ def update_item(item_id: str, fields: dict[str, Any]) -> dict[str, Any]:
 
 def delete_item(item_id: str) -> None:
     d = item_dir(item_id)
-    shutil.rmtree(d)
+    _retry_fs(lambda: shutil.rmtree(d))
     index_db.remove_item(item_id)
 
 
@@ -166,7 +181,7 @@ def move_item(item_id: str, dest_folder_rel: str) -> dict[str, Any]:
     dest = dest_folder / item_id
     if dest.exists():
         raise LibraryError(f"destination already exists: {dest}")
-    shutil.move(str(d), str(dest))
+    _retry_fs(lambda: shutil.move(str(d), str(dest)))
     meta = load_meta(dest)
     index_db.upsert_item(meta, dest_rel)
     meta["folder"] = dest_rel
@@ -221,10 +236,10 @@ def remove_video(item_id: str, file_name: str) -> dict[str, Any]:
         raise NotFound(f"video not found: {file_rel}")
     target = d / file_rel
     if target.is_file():
-        target.unlink()
+        _retry_fs(target.unlink)
     thumb = target.with_suffix(".thumb.jpg")
     if thumb.is_file():
-        thumb.unlink()
+        _retry_fs(thumb.unlink)
     meta["videos"] = kept
     save_meta(d, meta)
     root = paths.get_library_root()

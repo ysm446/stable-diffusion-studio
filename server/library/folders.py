@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import shutil
+import time
 from pathlib import Path
 from typing import Any
 
@@ -11,6 +12,20 @@ from server.library import index_db, paths
 
 class FolderError(Exception):
     pass
+
+
+def _retry_fs(fn, attempts: int = 4, wait: float = 0.3):
+    """Windows の一時的なファイルロック（WinError 5/32）を短時間リトライする。"""
+    for i in range(attempts):
+        try:
+            return fn()
+        except PermissionError:
+            if i == attempts - 1:
+                raise FolderError(
+                    "フォルダが使用中のため操作できません。"
+                    "エクスプローラーのウィンドウや再生中の動画を閉じてから再試行してください。"
+                )
+            time.sleep(wait)
 
 
 def _folder_node(path: Path, root: Path) -> dict[str, Any]:
@@ -64,7 +79,7 @@ def rename_folder(rel: str, new_name: str) -> str:
     dest = src.parent / new_name
     if dest.exists():
         raise FolderError(f"folder already exists: {new_name!r}")
-    src.rename(dest)
+    _retry_fs(lambda: src.rename(dest))
     parent_rel = "/".join(rel.split("/")[:-1])
     new_rel = f"{parent_rel}/{new_name}" if parent_rel else new_name
     index_db.move_folder_prefix(rel, new_rel)
@@ -87,7 +102,7 @@ def move_folder(rel: str, dest_parent_rel: str) -> str:
     dest = dest_parent / src.name
     if dest.exists():
         raise FolderError(f"destination already exists: {dest}")
-    shutil.move(str(src), str(dest))
+    _retry_fs(lambda: shutil.move(str(src), str(dest)))
     new_rel = f"{dest_parent_rel}/{src.name}" if dest_parent_rel else src.name
     index_db.move_folder_prefix(rel, new_rel)
     return new_rel
@@ -102,5 +117,5 @@ def delete_folder(rel: str, *, recursive: bool = False) -> None:
         raise FolderError(f"folder not found: {rel!r}")
     if any(target.iterdir()) and not recursive:
         raise FolderError("folder is not empty (pass recursive=true to delete)")
-    shutil.rmtree(target)
+    _retry_fs(lambda: shutil.rmtree(target))
     index_db.remove_folder_items(rel)
