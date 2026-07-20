@@ -49,6 +49,7 @@ const seqState = {
   paletteTree: null, // フォルダツリー
   paletteFolder: "", // パレットで選択中のフォルダ rel
   paletteExpanded: new Set([""]), // 展開中フォルダ
+  loop: false, // ループ再生
   busy: false,
 };
 
@@ -388,21 +389,18 @@ function nextNodeId() {
   return (ids.length ? Math.max(...ids) : 0) + 1;
 }
 
-function addNodeFromVideo(v) {
+// グラフ座標 (gx, gy) を中心にノードを配置
+function addNodeAt(v, gx, gy) {
   if (!seqState.seq) {
     setSeqStatus("先にシーケンスを選択（または作成）してください", true);
     return;
   }
-  // ビュー中央あたりに配置（少しずらして重なりを避ける）
-  const rect = $("#seq-canvas").getBoundingClientRect();
-  const center = screenToGraph(rect.left + rect.width / 2, rect.top + rect.height / 3);
-  const offset = seqState.seq.nodes.length * 24;
   seqState.seq.nodes.push({
     id: nextNodeId(),
     item_id: v.item_id,
     file: v.file,
-    x: Math.round(center.x - NODE_W / 2 + offset),
-    y: Math.round(center.y + offset),
+    x: Math.round(gx - NODE_W / 2),
+    y: Math.round(gy - PORT_CY),
     thumb: v.thumb,
     prompt: v.prompt || v.item_prompt || "",
     missing: false,
@@ -410,6 +408,18 @@ function addNodeFromVideo(v) {
   renderGraph();
   saveGraph();
   setSeqStatus("ノードを追加しました");
+}
+
+// ＋ ボタン：ビュー中央あたりに配置（少しずらして重なりを避ける）
+function addNodeFromVideo(v) {
+  if (!seqState.seq) {
+    setSeqStatus("先にシーケンスを選択（または作成）してください", true);
+    return;
+  }
+  const rect = $("#seq-canvas").getBoundingClientRect();
+  const center = screenToGraph(rect.left + rect.width / 2, rect.top + rect.height / 3);
+  const offset = seqState.seq.nodes.length * 24;
+  addNodeAt(v, center.x + offset, center.y + PORT_CY + offset);
 }
 
 function removeNode(id) {
@@ -450,6 +460,32 @@ function addEdge(src, dst) {
 function initCanvasInteractions() {
   const canvas = $("#seq-canvas");
   const nodesEl = $("#seq-nodes");
+
+  // パレットからのクリップをドロップしてノード配置
+  canvas.addEventListener("dragover", (e) => {
+    if ([...e.dataTransfer.types].includes("application/x-clip")) {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "copy";
+      canvas.classList.add("is-drop-target");
+    }
+  });
+  canvas.addEventListener("dragleave", (e) => {
+    if (!canvas.contains(e.relatedTarget)) canvas.classList.remove("is-drop-target");
+  });
+  canvas.addEventListener("drop", (e) => {
+    canvas.classList.remove("is-drop-target");
+    const raw = e.dataTransfer.getData("application/x-clip");
+    if (!raw) return;
+    e.preventDefault();
+    let clip;
+    try {
+      clip = JSON.parse(raw);
+    } catch {
+      return;
+    }
+    const g = screenToGraph(e.clientX, e.clientY);
+    addNodeAt(clip, g.x, g.y);
+  });
 
   // ズーム
   canvas.addEventListener("wheel", (e) => {
@@ -732,8 +768,12 @@ function playAt(pos, seekInClip = 0, opts = {}) {
     return;
   }
   if (pos < 0 || pos >= t.nodes.length) {
-    // 末尾まで再生し終えたら先頭に頭出しして待機（トランスポートは保持）
-    resetToHead();
+    // 末尾まで再生し終えた：ループ ON なら先頭から再生、OFF なら頭出しして待機
+    if (seqState.loop) {
+      playAt(0, 0, { bgmGlobal: 0 });
+    } else {
+      resetToHead();
+    }
     return;
   }
   const node = t.nodes[pos];
@@ -743,6 +783,7 @@ function playAt(pos, seekInClip = 0, opts = {}) {
   renderGraph();
 
   const player = $("#seq-player");
+  player.loop = false; // 順路はクリップ送りで進むので単体ループは無効
   const url = clipUrl(node);
   const token = ++seqState.playToken;
   const startPlayback = () => {
@@ -1142,9 +1183,20 @@ function renderClipCards(container, videos, emptyMsg) {
   for (const v of videos) {
     const card = document.createElement("div");
     card.className = "palette-card";
+    card.title = "クリックで試聴 / ドラッグでノード配置";
+    // ノードエリアへドラッグして配置
+    card.draggable = true;
+    card.addEventListener("dragstart", (e) => {
+      e.dataTransfer.setData(
+        "application/x-clip",
+        JSON.stringify({ item_id: v.item_id, file: v.file, thumb: v.thumb, prompt: v.prompt || v.item_prompt || "" })
+      );
+      e.dataTransfer.effectAllowed = "copy";
+    });
     const img = document.createElement("img");
     img.src = thumbUrl(v.item_id, v.thumb);
     img.loading = "lazy";
+    img.draggable = false;
     card.appendChild(img);
     const info = document.createElement("div");
     info.className = "palette-info";
@@ -1157,13 +1209,36 @@ function renderClipCards(container, videos, emptyMsg) {
     sub.textContent = v.workflow || v.file;
     info.append(title, sub);
     card.appendChild(info);
+    // クリックでプレイヤーに読み込んで試聴
+    card.addEventListener("click", () => previewClip(v));
     const add = document.createElement("button");
     add.textContent = "＋";
     add.title = "ノードとして追加";
-    add.addEventListener("click", () => addNodeFromVideo(v));
+    add.addEventListener("click", (e) => {
+      e.stopPropagation();
+      addNodeFromVideo(v);
+    });
     card.appendChild(add);
     container.appendChild(card);
   }
+}
+
+// パレットのクリップをプレイヤーで単体再生（順路とは独立）
+function previewClip(v) {
+  stopPlayback();
+  seqState.transport = null;
+  seqState.playOrder = [];
+  seqState.playPos = -1;
+  const player = $("#seq-player");
+  player.onended = null;
+  player.ontimeupdate = () => {
+    const d = player.duration || 0;
+    updateTransportUI(player.currentTime || 0, d);
+  };
+  player.src = `/api/library/file/${v.item_id}/${v.file}`;
+  player.loop = seqState.loop;
+  player.play().catch(() => {});
+  setPlayToggle(true);
 }
 
 // ---------------------------------------------------------------------------
@@ -1253,6 +1328,15 @@ export function initSequenceView() {
 
   $("#btn-seq-play").addEventListener("click", () => seqState.seq && playSequence());
   $("#seq-play-toggle").addEventListener("click", togglePlay);
+  const loopBtn = $("#seq-loop-toggle");
+  loopBtn.addEventListener("click", () => {
+    seqState.loop = !seqState.loop;
+    loopBtn.classList.toggle("is-active", seqState.loop);
+    // 単体試聴中ならその場でループ設定を反映
+    const player = $("#seq-player");
+    if (!seqState.transport) player.loop = seqState.loop;
+    setSeqStatus(seqState.loop ? "ループ再生: ON" : "ループ再生: OFF");
+  });
 
   // プレイヤー画面：クリックで再生/一時停止、ダブルクリックで全画面
   const player = $("#seq-player");
