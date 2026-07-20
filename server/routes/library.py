@@ -152,6 +152,11 @@ class ItemMove(BaseModel):
     folder: str = ""
 
 
+class ItemReorder(BaseModel):
+    folder: str = ""
+    order: list[str]
+
+
 @router.get("/items")
 def list_items(
     folder: str = "",
@@ -209,6 +214,12 @@ def update_item(item_id: str, body: ItemUpdate) -> dict[str, Any]:
 @router.post("/items/{item_id}/move")
 def move_item(item_id: str, body: ItemMove) -> dict[str, Any]:
     return _wrap(items.move_item, item_id, body.folder)
+
+
+@router.post("/items/reorder")
+def reorder_items(body: ItemReorder) -> dict[str, bool]:
+    _wrap(items.reorder, body.folder, body.order)
+    return {"ok": True}
 
 
 @router.delete("/items/{item_id}")

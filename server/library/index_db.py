@@ -26,7 +26,8 @@ CREATE TABLE IF NOT EXISTS items (
     seed INTEGER,
     params TEXT DEFAULT '{}',
     tags TEXT DEFAULT '[]',
-    video_count INTEGER DEFAULT 0
+    video_count INTEGER DEFAULT 0,
+    sort_order REAL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS idx_items_folder ON items(folder);
 CREATE TABLE IF NOT EXISTS videos (
@@ -54,6 +55,11 @@ def connect() -> sqlite3.Connection:
     conn = sqlite3.connect(paths.db_path())
     conn.row_factory = sqlite3.Row
     conn.executescript(SCHEMA)
+    # 既存 DB に sort_order 列が無ければ追加
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(items)")}
+    if "sort_order" not in cols:
+        conn.execute("ALTER TABLE items ADD COLUMN sort_order REAL DEFAULT 0")
+        conn.commit()
     return conn
 
 
@@ -73,8 +79,8 @@ def upsert_item(meta: dict[str, Any], folder: str, conn: sqlite3.Connection | No
             """
             INSERT OR REPLACE INTO items
                 (id, folder, created_at, image, thumb, prompt, negative_prompt,
-                 caption, seed, params, tags, video_count)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 caption, seed, params, tags, video_count, sort_order)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 meta["id"],
@@ -89,6 +95,7 @@ def upsert_item(meta: dict[str, Any], folder: str, conn: sqlite3.Connection | No
                 json.dumps(meta.get("params") or {}, ensure_ascii=False),
                 json.dumps(meta.get("tags") or [], ensure_ascii=False),
                 len(videos),
+                float(meta.get("sort_order") or 0),
             ),
         )
         conn.execute("DELETE FROM videos WHERE item_id = ?", (meta["id"],))
@@ -148,20 +155,18 @@ def get_item_row(item_id: str) -> dict[str, Any] | None:
 def list_items(folder: str = "", recursive: bool = False) -> list[dict[str, Any]]:
     conn = connect()
     try:
+        order = "ORDER BY sort_order DESC, created_at DESC"
         if recursive:
             if folder:
                 rows = conn.execute(
-                    "SELECT * FROM items WHERE folder = ? OR folder LIKE ?"
-                    " ORDER BY created_at DESC",
+                    f"SELECT * FROM items WHERE folder = ? OR folder LIKE ? {order}",
                     (folder, folder + "/%"),
                 ).fetchall()
             else:
-                rows = conn.execute(
-                    "SELECT * FROM items ORDER BY created_at DESC"
-                ).fetchall()
+                rows = conn.execute(f"SELECT * FROM items {order}").fetchall()
         else:
             rows = conn.execute(
-                "SELECT * FROM items WHERE folder = ? ORDER BY created_at DESC",
+                f"SELECT * FROM items WHERE folder = ? {order}",
                 (folder,),
             ).fetchall()
         return [_row_to_item(r) for r in rows]

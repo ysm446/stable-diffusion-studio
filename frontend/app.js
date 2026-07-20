@@ -334,12 +334,41 @@ function renderGrid() {
     if (item.id === state.selectedId) card.classList.add("is-selected");
     card.draggable = true;
     card.addEventListener("dragstart", (e) => {
+      internalDragId = item.id;
       e.dataTransfer.setData("application/x-item-id", item.id);
       e.dataTransfer.effectAllowed = "move";
+    });
+    card.addEventListener("dragend", () => {
+      internalDragId = null;
+      card.classList.remove("drop-before", "drop-after");
+    });
+    // グリッド内での並べ替え
+    card.addEventListener("dragover", (e) => {
+      if (!internalDragId || internalDragId === item.id) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "move";
+      const rect = card.getBoundingClientRect();
+      const after = e.clientX > rect.left + rect.width / 2;
+      card.classList.toggle("drop-after", after);
+      card.classList.toggle("drop-before", !after);
+    });
+    card.addEventListener("dragleave", () =>
+      card.classList.remove("drop-before", "drop-after")
+    );
+    card.addEventListener("drop", (e) => {
+      const dragged = e.dataTransfer.getData("application/x-item-id");
+      card.classList.remove("drop-before", "drop-after");
+      if (!dragged || dragged === item.id) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const rect = card.getBoundingClientRect();
+      const after = e.clientX > rect.left + rect.width / 2;
+      reorderItems(dragged, item.id, after);
     });
 
     const img = document.createElement("img");
     img.loading = "lazy";
+    img.draggable = false; // ネイティブの画像ドラッグ（＝複製の原因）を無効化
     img.src = `/api/library/file/${item.id}/${item.thumb || "thumb.jpg"}`;
     img.alt = item.prompt || item.id;
     card.appendChild(img);
@@ -542,17 +571,39 @@ $("#import-files").addEventListener("change", async (e) => {
   e.target.value = "";
 });
 
+// グリッド内ドラッグ（並べ替え）の識別用。アプリ内カードのドラッグ中は import しない
+let internalDragId = null;
+
+async function reorderItems(draggedId, targetId, after) {
+  const ids = state.items.map((it) => it.id);
+  const from = ids.indexOf(draggedId);
+  let to = ids.indexOf(targetId);
+  if (from < 0 || to < 0) return;
+  ids.splice(from, 1);
+  to = ids.indexOf(targetId);
+  ids.splice(after ? to + 1 : to, 0, draggedId);
+  // 楽観的に並べ替えて即描画
+  const byId = new Map(state.items.map((it) => [it.id, it]));
+  state.items = ids.map((id) => byId.get(id));
+  renderGrid();
+  await run(() =>
+    apiJson("/api/library/items/reorder", "POST", { folder: state.folder, order: ids })
+  );
+}
+
 const grid = $("#grid");
 grid.addEventListener("dragover", (e) => {
-  if ([...e.dataTransfer.types].includes("Files")) {
+  // 外部ファイルのドロップ（取り込み）だけ受け付ける。カードの並べ替えはカード側で処理
+  if (!internalDragId && [...e.dataTransfer.types].includes("Files")) {
     e.preventDefault();
     grid.classList.add("is-drop-target");
   }
 });
 grid.addEventListener("dragleave", () => grid.classList.remove("is-drop-target"));
 grid.addEventListener("drop", async (e) => {
-  e.preventDefault();
   grid.classList.remove("is-drop-target");
+  if (internalDragId) return; // アプリ内ドラッグは取り込まない
+  e.preventDefault();
   if (e.dataTransfer.files.length > 0) await importFiles(e.dataTransfer.files);
 });
 

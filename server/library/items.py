@@ -172,6 +172,31 @@ def update_item(item_id: str, fields: dict[str, Any]) -> dict[str, Any]:
     return meta
 
 
+def reorder(folder_rel: str, ordered_ids: list[str]) -> None:
+    """フォルダ内アイテムを ordered_ids の並び（先頭が上）に並べ替える。
+
+    先頭が最大の sort_order を持つよう、現在時刻を基準に降順で振り直す。
+    新規生成物（sort_order=time.time()）は以後も先頭に来る。
+    """
+    folder_rel = paths.normalize_rel(folder_rel)
+    base = time.time()
+    for i, item_id in enumerate(ordered_ids):
+        try:
+            d = item_dir(item_id)
+        except NotFound:
+            continue
+        # 対象が本当にこのフォルダのアイテムか確認
+        root = paths.get_library_root()
+        folder = d.parent.relative_to(root).as_posix()
+        folder = "" if folder == "." else folder
+        if folder != folder_rel:
+            continue
+        meta = load_meta(d)
+        meta["sort_order"] = base - i * 0.001
+        save_meta(d, meta)
+        index_db.upsert_item(meta, folder)
+
+
 def delete_item(item_id: str) -> None:
     d = item_dir(item_id)
     _retry_fs(lambda: shutil.rmtree(d))
