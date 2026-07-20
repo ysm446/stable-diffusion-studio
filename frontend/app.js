@@ -350,6 +350,13 @@ function renderGrid() {
       if (state.selectedId !== item.id) selectItem(item.id);
       showContextMenu(e.clientX, e.clientY, [
         {
+          label: "✨ この設定で新規生成",
+          action: async () => {
+            const full = await run(() => api(`/api/library/items/${item.id}`));
+            if (full) useItemForGeneration(full);
+          },
+        },
+        {
           label: "📂 ファイルの場所を開く",
           action: () => revealItem(item.id),
         },
@@ -396,6 +403,41 @@ async function revealItem(itemId) {
     () => api(`/api/library/items/${itemId}/reveal`, { method: "POST" }),
     "エクスプローラーで開きました"
   );
+}
+
+// 保存済み画像のプロンプト・パラメータを生成パネルに読み込む
+async function useItemForGeneration(item) {
+  const g = state.genImage;
+  const p = item.params || {};
+  const num = (v) => {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : undefined;
+  };
+  g.positive = item.prompt || "";
+  g.negative = item.negative_prompt || "";
+  if (p.backend === "ComfyUI" || p.backend === "WebUI Forge") g.backend = p.backend;
+  if (p.workflow) g.workflow = p.workflow;
+  if (num(p.width) !== undefined) g.width = num(p.width);
+  if (num(p.height) !== undefined) g.height = num(p.height);
+  if (num(p.steps) !== undefined) g.steps = num(p.steps);
+  const cfg = num(p.cfg) ?? num(p.cfg_scale);
+  if (cfg !== undefined) g.cfg = cfg;
+  if (p.sampler && state.options.forge_samplers.includes(p.sampler)) g.sampler = p.sampler;
+  // Seed は流用（そのまま再現）。ランダムにしたいときはフォームで -1 にできる
+  if (item.seed !== null && item.seed !== undefined) g.seed = item.seed;
+
+  const folder = item.folder ?? state.folder ?? "";
+  // フォルダ選択に切り替える（selectedId を外して生成パネルを表示）
+  state.folder = folder;
+  state.selectedId = null;
+  state.videoPanel = false;
+  state.query = "";
+  $("#search").value = "";
+  updateHash();
+  renderTree();
+  await loadItems();
+  await renderContext();
+  setStatus("プロンプト・パラメータを生成パネルに読み込みました。編集して生成できます");
 }
 
 // ---------------------------------------------------------------------------
@@ -915,6 +957,14 @@ function renderItemContext(el, item) {
     el.appendChild(field("Seed", String(item.seed)));
   if (item.params && Object.keys(item.params).length > 0)
     el.appendChild(paramsField("Params", item.params));
+
+  // この画像のプロンプト・パラメータを生成パネルに読み込む
+  const useBtn = document.createElement("button");
+  useBtn.className = "primary";
+  useBtn.textContent = "✨ この設定で新規生成";
+  useBtn.title = "プロンプト・パラメータを生成パネルに読み込み、編集して生成できます";
+  useBtn.addEventListener("click", () => useItemForGeneration(item));
+  el.appendChild(useBtn);
 
   // タグ・キャプション編集
   const tagsDiv = document.createElement("div");
