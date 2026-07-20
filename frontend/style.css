@@ -71,6 +71,9 @@ body {
   grid-template-columns: var(--left-w, 240px) 6px 1fr 6px var(--right-w, 420px);
 }
 
+/* 区切りはリサイザーのラインが担うので、パネル自身のボーダーは消す（二重線防止） */
+#view-library > .pane { border-right: none; }
+
 .panes[hidden] { display: none; }
 
 .pane-resizer {
