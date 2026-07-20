@@ -37,7 +37,8 @@
 ## 起動
 
 [start.bat](start.bat) をダブルクリックすると、`.venv` の作成・依存インストール・
-サーバー起動（`python -m server.main --port 8765`）・Electron 起動まで自動で行います。
+サーバー起動（`python -m server.main --port 8785`）・Electron 起動まで自動で行います。
+旧 Image Assistant（ポート 8765）と同時に起動しても競合しません。
 
 ## 構成
 

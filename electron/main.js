@@ -4,7 +4,7 @@ const { app, BrowserWindow, dialog, globalShortcut, ipcMain, Menu } = require('e
 const path = require('path');
 const http = require('http');
 
-const PORT = 8765;
+const PORT = 8785;
 const SERVER_URL = `http://127.0.0.1:${PORT}`;
 
 let mainWindow = null;
@@ -53,7 +53,7 @@ function createWindow() {
     height: 1200,
     minWidth: 900,
     minHeight: 600,
-    title: 'Image Assistant',
+    title: 'Stable Diffusion Studio',
     icon: iconPath,
     backgroundColor: '#1c1c1c',
     webPreferences: {

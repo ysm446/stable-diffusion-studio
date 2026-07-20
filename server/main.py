@@ -1,6 +1,7 @@
 """FastAPI バックエンドサーバー（ライブラリ中心構成）。
 
-起動: python -m server.main --port 8765
+起動: python -m server.main --port 8785
+（旧 Image Assistant が 8765 を使うため、競合しないよう別ポートにしている）
 """
 
 from __future__ import annotations
@@ -29,8 +30,8 @@ app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "http://127.0.0.1:8765",
-        "http://localhost:8765",
+        "http://127.0.0.1:8785",
+        "http://localhost:8785",
     ],
     allow_methods=["*"],
     allow_headers=["*"],
@@ -86,7 +87,7 @@ def stop_managed_backends() -> None:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--port", type=int, default=8765)
+    parser.add_argument("--port", type=int, default=8785)
     parser.add_argument("--host", default="127.0.0.1")
     args = parser.parse_args()
     uvicorn.run(app, host=args.host, port=args.port)

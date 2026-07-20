@@ -1,7 +1,7 @@
 @echo off
 setlocal EnableExtensions EnableDelayedExpansion
 echo ========================================
-echo  Image Assistant
+echo  Stable Diffusion Studio
 echo ========================================
 echo.
 
@@ -81,7 +81,7 @@ set "HF_HUB_DISABLE_TELEMETRY=1"
 REM Start Python server in background
 echo Starting Python server...
 cd /d "%ROOT_DIR%"
-start /B python -m server.main --port 8765
+start /B python -m server.main --port 8785
 
 REM Start Electron
 cd /d "%ROOT_DIR%electron"
