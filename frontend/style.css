@@ -253,6 +253,67 @@ body {
 
 .grid.is-drop-target { outline: 2px dashed var(--accent); outline-offset: -4px; }
 
+/* 下部の動画ストリップ（分割エリア） */
+.video-strip {
+  flex: none;
+  height: 190px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-pane);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.video-strip-head {
+  padding: 4px 10px;
+  font-size: 11px;
+  color: var(--text-dim);
+  border-bottom: 1px solid var(--border);
+}
+
+.video-strip-list {
+  flex: 1;
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 8px 10px;
+  align-items: stretch;
+}
+
+.vstrip-card {
+  flex: 0 0 auto;
+  width: 200px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+  cursor: pointer;
+  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+}
+
+.vstrip-card:hover { border-color: var(--text-dim); }
+.vstrip-card.is-selected { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+
+.vstrip-card video {
+  width: 100%;
+  flex: 1;
+  min-height: 0;
+  object-fit: cover;
+  background: #000;
+}
+
+.vstrip-label {
+  flex: none;
+  padding: 3px 6px;
+  font-size: 11px;
+  color: var(--text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .grid-empty {
   grid-column: 1 / -1;
   color: var(--text-dim);

@@ -11,6 +11,8 @@ const state = {
   folder: null, // 選択中フォルダ rel（"" はルート、null は未選択）
   items: [],
   selectedId: null,
+  currentItem: null, // 選択中画像の詳細（動画一覧を含む）
+  selectedVideoFile: null, // 下部ストリップで選択中の動画 file
   query: "",
   videoPanel: false, // 画像選択中に動画生成パネルを表示するか
   genBusy: false,
@@ -423,10 +425,50 @@ function renderGrid() {
 
 async function selectItem(itemId) {
   state.selectedId = itemId;
+  state.selectedVideoFile = null;
   state.videoPanel = false;
+  state.currentItem = await run(() => api(`/api/library/items/${itemId}`));
   updateHash();
   renderGrid();
+  renderVideoStrip();
   await renderContext();
+}
+
+// 下部の動画ストリップ（選択画像の動画を横並び表示）
+function renderVideoStrip() {
+  const strip = $("#video-strip");
+  const list = $("#video-strip-list");
+  const item = state.currentItem;
+  const videos = (item && item.videos) || [];
+  if (!state.selectedId || videos.length === 0) {
+    strip.hidden = true;
+    list.innerHTML = "";
+    return;
+  }
+  strip.hidden = false;
+  $("#video-strip-title").textContent = `動画（${videos.length}）— クリックでプロパティ表示`;
+  list.innerHTML = "";
+  for (const v of videos) {
+    const card = document.createElement("div");
+    card.className = "vstrip-card";
+    if (v.file === state.selectedVideoFile) card.classList.add("is-selected");
+    const video = document.createElement("video");
+    video.src = `/api/library/file/${item.id}/${v.file}`;
+    video.preload = "metadata";
+    video.muted = true;
+    card.appendChild(video);
+    const label = document.createElement("div");
+    label.className = "vstrip-label";
+    label.textContent = v.prompt || v.file.split("/").pop();
+    label.title = v.file;
+    card.appendChild(label);
+    card.addEventListener("click", async () => {
+      state.selectedVideoFile = v.file;
+      renderVideoStrip();
+      await renderContext();
+    });
+    list.appendChild(card);
+  }
 }
 
 async function deleteItemById(itemId, videoCount = 0) {
@@ -615,13 +657,25 @@ async function renderContext() {
   const el = $("#context");
   el.innerHTML = "";
   if (state.selectedId) {
-    const item = await run(() => api(`/api/library/items/${state.selectedId}`));
+    let item = state.currentItem;
+    if (!item) item = state.currentItem = await run(() => api(`/api/library/items/${state.selectedId}`));
     if (item) {
-      if (state.videoPanel) renderVideoGenContext(el, item);
-      else renderItemContext(el, item);
+      if (state.videoPanel) {
+        renderVideoGenContext(el, item);
+      } else if (state.selectedVideoFile) {
+        const video = (item.videos || []).find((v) => v.file === state.selectedVideoFile);
+        if (video) renderVideoPropsContext(el, item, video);
+        else {
+          state.selectedVideoFile = null;
+          renderItemContext(el, item);
+        }
+      } else {
+        renderItemContext(el, item);
+      }
       return;
     }
     state.selectedId = null;
+    state.currentItem = null;
   }
   renderFolderContext(el);
 }
@@ -1263,6 +1317,8 @@ async function runVideoGeneration(btn, itemId) {
           setGenStatus(ev.status || "動画を生成しました");
           await loadTree();
           await loadItems();
+          if (state.currentItem) state.currentItem = ev.item;
+          renderVideoStrip();
         }
       }
     );
@@ -1353,94 +1409,11 @@ function renderItemContext(el, item) {
   useBtn.addEventListener("click", () => useItemForGeneration(item));
   el.appendChild(useBtn);
 
-  // 動画一覧
-  const vh = document.createElement("h2");
-  vh.textContent = `動画（${(item.videos || []).length}）`;
-  el.appendChild(vh);
-
-  for (const v of item.videos || []) {
-    const entry = document.createElement("div");
-    entry.className = "video-entry";
-    const video = document.createElement("video");
-    video.controls = true;
-    video.preload = "metadata";
-    video.src = `/api/library/file/${item.id}/${v.file}`;
-    entry.appendChild(video);
-
-    const fileLabel = document.createElement("div");
-    fileLabel.className = "palette-sub";
-    fileLabel.textContent = `${v.file}　${(v.created_at || "").replace("T", " ").slice(0, 16)}`;
-    entry.appendChild(fileLabel);
-
-    // 動画プロンプト・追加指示（編集可）
-    const vs = v.settings || {};
-    const vpInput = autoGrowTextarea(v.prompt || vs.prompt || "");
-    entry.appendChild(editableField("動画プロンプト", vpInput));
-    const veInput = autoGrowTextarea(vs.extra_instruction || "");
-    entry.appendChild(editableField("追加指示", veInput));
-
-    const row = document.createElement("div");
-    row.className = "video-row";
-
-    const saveBtn = document.createElement("button");
-    saveBtn.textContent = "💾 保存";
-    saveBtn.title = "この動画のプロンプト・追加指示を保存";
-    saveBtn.addEventListener("click", async () => {
-      const name = v.file.split("/").pop();
-      await run(async () => {
-        await apiJson(
-          `/api/library/items/${item.id}/videos/${encodeURIComponent(name)}`,
-          "PATCH",
-          {
-            prompt: vpInput.value,
-            settings: { ...vs, prompt: vpInput.value, extra_instruction: veInput.value },
-          }
-        );
-        await loadItems();
-      }, "保存しました");
-    });
-
-    const regenBtn = document.createElement("button");
-    regenBtn.className = "primary";
-    regenBtn.textContent = "✨ この設定で新規動画生成";
-    regenBtn.title = "この動画の設定を動画パネルに読み込みます（編集して生成できます）";
-    regenBtn.addEventListener("click", async () => {
-      const g = state.genVideo;
-      g.prompt = vpInput.value;
-      g.extra = veInput.value;
-      g.workflow = vs.workflow || v.workflow || g.workflow;
-      g.width = vs.width ?? "";
-      g.height = vs.height ?? "";
-      g.frames = vs.frames ?? "";
-      g.seed = vs.seed ?? -1;
-      g._loadedFor = item.id; // パネル側の自動復元を抑止
-      state.videoPanel = true;
-      updateHash();
-      await renderContext();
-    });
-
-    const del = document.createElement("button");
-    del.className = "danger";
-    del.textContent = "削除";
-    del.addEventListener("click", async () => {
-      if (!confirm(`動画 ${v.file} を削除しますか？`)) return;
-      const name = v.file.split("/").pop();
-      await run(async () => {
-        await api(`/api/library/items/${item.id}/videos/${encodeURIComponent(name)}`, {
-          method: "DELETE",
-        });
-        await refresh();
-      }, "動画を削除しました");
-    });
-
-    row.append(saveBtn, regenBtn, del);
-    entry.appendChild(row);
-    el.appendChild(entry);
-  }
-
+  // 動画生成（動画一覧は下部ストリップに表示）
   const genVideoBtn = document.createElement("button");
   genVideoBtn.className = "primary";
-  genVideoBtn.textContent = "🎞 動画を生成...";
+  const vcount = (item.videos || []).length;
+  genVideoBtn.textContent = vcount > 0 ? `🎞 動画を生成...（${vcount}件は下に表示）` : "🎞 動画を生成...";
   genVideoBtn.addEventListener("click", async () => {
     state.videoPanel = true;
     updateHash();
@@ -1461,6 +1434,107 @@ function renderItemContext(el, item) {
     deleteItemById(item.id, (item.videos || []).length)
   );
   el.appendChild(delBtn);
+}
+
+// 動画のプロパティ（下部ストリップで動画を選択したとき、右パネルに表示）
+function renderVideoPropsContext(el, item, v) {
+  const h = document.createElement("h2");
+  h.textContent = "動画プロパティ";
+  el.appendChild(h);
+
+  const back = document.createElement("button");
+  back.textContent = "← 画像のプロパティに戻る";
+  back.addEventListener("click", async () => {
+    state.selectedVideoFile = null;
+    renderVideoStrip();
+    await renderContext();
+  });
+  el.appendChild(back);
+
+  const video = document.createElement("video");
+  video.className = "preview";
+  video.controls = true;
+  video.src = `/api/library/file/${item.id}/${v.file}`;
+  el.appendChild(video);
+
+  const fileLabel = document.createElement("div");
+  fileLabel.className = "palette-sub";
+  fileLabel.textContent = `${v.file}　${(v.created_at || "").replace("T", " ").slice(0, 16)}`;
+  el.appendChild(fileLabel);
+
+  const vs = v.settings || {};
+  const vpInput = autoGrowTextarea(v.prompt || vs.prompt || "");
+  el.appendChild(editableField("動画プロンプト", vpInput));
+  const veInput = autoGrowTextarea(vs.extra_instruction || "");
+  el.appendChild(editableField("追加指示", veInput));
+
+  if (vs && Object.keys(vs).length > 0) {
+    const shown = {};
+    for (const k of ["workflow", "width", "height", "frames", "seed"]) {
+      if (vs[k] !== undefined && vs[k] !== "") shown[k] = vs[k];
+    }
+    if (Object.keys(shown).length) el.appendChild(paramsField("生成パラメータ", shown));
+  }
+
+  const saveBtn = document.createElement("button");
+  saveBtn.textContent = "💾 保存";
+  saveBtn.addEventListener("click", async () => {
+    const name = v.file.split("/").pop();
+    await run(async () => {
+      await apiJson(`/api/library/items/${item.id}/videos/${encodeURIComponent(name)}`, "PATCH", {
+        prompt: vpInput.value,
+        settings: { ...vs, prompt: vpInput.value, extra_instruction: veInput.value },
+      });
+      await reloadCurrentItem();
+    }, "保存しました");
+  });
+  el.appendChild(saveBtn);
+
+  const regenBtn = document.createElement("button");
+  regenBtn.className = "primary";
+  regenBtn.textContent = "✨ この設定で新規動画生成";
+  regenBtn.addEventListener("click", async () => {
+    const g = state.genVideo;
+    g.prompt = vpInput.value;
+    g.extra = veInput.value;
+    g.workflow = vs.workflow || v.workflow || g.workflow;
+    g.width = vs.width ?? "";
+    g.height = vs.height ?? "";
+    g.frames = vs.frames ?? "";
+    g.seed = vs.seed ?? -1;
+    g._loadedFor = item.id;
+    state.selectedVideoFile = null;
+    state.videoPanel = true;
+    updateHash();
+    renderVideoStrip();
+    await renderContext();
+  });
+  el.appendChild(regenBtn);
+
+  const del = document.createElement("button");
+  del.className = "danger";
+  del.textContent = "🗑 この動画を削除";
+  del.addEventListener("click", async () => {
+    if (!confirm(`動画 ${v.file} を削除しますか？`)) return;
+    const name = v.file.split("/").pop();
+    await run(async () => {
+      await api(`/api/library/items/${item.id}/videos/${encodeURIComponent(name)}`, {
+        method: "DELETE",
+      });
+      state.selectedVideoFile = null;
+      await reloadCurrentItem();
+      await loadItems();
+    }, "動画を削除しました");
+  });
+  el.appendChild(del);
+}
+
+// 選択中画像の詳細を再取得して、ストリップと右パネルを更新
+async function reloadCurrentItem() {
+  if (!state.selectedId) return;
+  state.currentItem = await run(() => api(`/api/library/items/${state.selectedId}`));
+  renderVideoStrip();
+  await renderContext();
 }
 
 // ---------------------------------------------------------------------------
@@ -1685,6 +1759,11 @@ $("#btn-reindex").addEventListener("click", async () => {
 async function refresh() {
   await loadTree();
   await loadItems();
+  if (!state.selectedId) {
+    state.currentItem = null;
+    state.selectedVideoFile = null;
+  }
+  renderVideoStrip();
   await renderContext();
 }
 
