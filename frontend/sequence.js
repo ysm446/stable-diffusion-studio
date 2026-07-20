@@ -631,7 +631,8 @@ function setPlayToggle(playing) {
   if (btn) btn.textContent = playing ? "⏸" : "▶";
 }
 
-function startBgm() {
+// BGM を用意（src / volume をセット）。用意できなければ null を返す
+function ensureBgmAudio() {
   // 試聴が鳴っていたら止める（重複再生を防ぐ）
   if (previewName) {
     previewAudio.pause();
@@ -639,12 +640,31 @@ function startBgm() {
     renderBgm();
   }
   const bgm = seqState.seq?.bgm;
-  if (!bgm || !bgm.file) return;
+  if (!bgm || !bgm.file) return null;
   const audio = $("#seq-bgm-audio");
   const url = `/api/library/bgm/${encodeURIComponent(bgm.file)}/file`;
   if (audio.src !== new URL(url, location.href).href) audio.src = url;
   audio.volume = bgm.volume ?? 0.8;
-  audio.play().catch(() => {});
+  return audio;
+}
+
+// 現在位置から継続再生（一時停止からの復帰・クリップ送りで使う）
+function startBgm() {
+  const audio = ensureBgmAudio();
+  if (audio) audio.play().catch(() => {});
+}
+
+// 順路全体の時刻 globalTime に合わせて BGM をジャンプ（ループを考慮）して再生
+function syncBgm(globalTime) {
+  const audio = ensureBgmAudio();
+  if (!audio) return;
+  const apply = () => {
+    const d = audio.duration;
+    audio.currentTime = Number.isFinite(d) && d > 0 ? globalTime % d : globalTime;
+    audio.play().catch(() => {});
+  };
+  if (audio.readyState >= 1 && Number.isFinite(audio.duration)) apply();
+  else audio.addEventListener("loadedmetadata", apply, { once: true });
 }
 
 function pauseBgm() {
@@ -673,7 +693,7 @@ async function playSequence() {
     return;
   }
   seqState.transport = t;
-  playAt(0);
+  playAt(0, 0, { bgmGlobal: 0 });
 }
 
 async function playFrom(nodeId) {
@@ -683,16 +703,18 @@ async function playFrom(nodeId) {
     seqState.playOrder = order;
     seqState.transport = await measureOrder(order);
     const node = seqState.seq.nodes.find((n) => n.id === nodeId);
-    playAt(seqState.transport.nodes.indexOf(node));
+    const idx2 = seqState.transport.nodes.indexOf(node);
+    playAt(idx2, 0, { bgmGlobal: seqState.transport.offsets[idx2] || 0 });
   } else {
     // 順路外 → 単体再生
     seqState.playOrder = [nodeId];
     seqState.transport = await measureOrder([nodeId]);
-    playAt(0);
+    playAt(0, 0, { bgmGlobal: 0 });
   }
 }
 
-function playAt(pos, seekInClip = 0) {
+// opts.bgmGlobal: BGM をこの順路全体時刻に合わせる（シーク時）。未指定なら継続再生
+function playAt(pos, seekInClip = 0, opts = {}) {
   const t = seqState.transport;
   if (!t || !t.nodes.length) {
     stopPlayback();
@@ -720,7 +742,9 @@ function playAt(pos, seekInClip = 0) {
     }
     player.play().catch(() => {});
     setPlayToggle(true);
-    startBgm();
+    // シーク時は BGM も同じ位置へジャンプ、通常送りは継続再生
+    if (opts.bgmGlobal != null) syncBgm(opts.bgmGlobal);
+    else startBgm();
   };
   if (player.src !== new URL(url, location.href).href) {
     player.src = url;
@@ -744,7 +768,7 @@ function seekTo(fraction) {
   const target = Math.max(0, Math.min(t.total, fraction * t.total));
   let pos = 0;
   while (pos < t.nodes.length - 1 && t.offsets[pos + 1] <= target) pos++;
-  playAt(pos, target - t.offsets[pos]);
+  playAt(pos, target - t.offsets[pos], { bgmGlobal: target });
 }
 
 // 先頭クリップに頭出しして待機（再生はしない）。トランスポートは保持
@@ -773,7 +797,7 @@ function togglePlay() {
   }
   if (seqState.playPos < 0) {
     // 頭出しロード済み → 現在位置（先頭 or シーク位置）から再生開始
-    playAt(0, player.currentTime || 0);
+    playAt(0, player.currentTime || 0, { bgmGlobal: player.currentTime || 0 });
     return;
   }
   if (player.paused) {

@@ -534,6 +534,16 @@ textarea.auto-grow {
 
 .seq-player-wrap:fullscreen {
   background: #000;
+  width: 100vw;
+  height: 100vh;
+}
+
+.seq-player-wrap:fullscreen #seq-player {
+  width: 100%;
+  height: 100%;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
 }
 
 #seq-player {
