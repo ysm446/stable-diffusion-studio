@@ -327,6 +327,25 @@ def remove_video(item_id: str, file_name: str) -> dict[str, Any]:
     return _wrap(items.remove_video, item_id, file_name)
 
 
+class VideosDelete(BaseModel):
+    files: list[str]
+
+
+@router.post("/items/{item_id}/videos/delete")
+def delete_videos(item_id: str, body: VideosDelete) -> dict[str, Any]:
+    """複数動画を一括削除する。"""
+    deleted = 0
+    for name in body.files:
+        try:
+            items.remove_video(item_id, name)
+            deleted += 1
+        except items.NotFound:
+            continue
+    item = _wrap(items.get_item, item_id)
+    item["deleted"] = deleted
+    return item
+
+
 # ---------------------------------------------------------------------------
 # ファイル配信・インデックス
 # ---------------------------------------------------------------------------

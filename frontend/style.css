@@ -295,6 +295,7 @@ body {
 
 .vstrip-card:hover { border-color: var(--text-dim); }
 .vstrip-card.is-selected { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.vstrip-card.is-focused { box-shadow: 0 0 0 2px var(--accent); }
 
 .vstrip-card video {
   width: 100%;

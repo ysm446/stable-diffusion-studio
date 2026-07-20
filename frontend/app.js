@@ -14,7 +14,9 @@ const state = {
   selectedIds: new Set(), // 複数選択（一括削除用）
   anchorIndex: null, // Shift 選択の起点
   currentItem: null, // 選択中画像の詳細（動画一覧を含む）
-  selectedVideoFile: null, // 下部ストリップで選択中の動画 file
+  selectedVideoFile: null, // 下部ストリップでフォーカス中の動画 file
+  selectedVideoFiles: new Set(), // 動画の複数選択（一括削除用）
+  videoAnchorIndex: null, // Shift 選択の起点
   query: "",
   videoPanel: false, // 画像選択中に動画生成パネルを表示するか
   genBusy: false,
@@ -497,6 +499,8 @@ async function selectItem(itemId) {
   state.selectedId = itemId;
   state.selectedIds = new Set([itemId]);
   state.selectedVideoFile = null;
+  state.selectedVideoFiles = new Set();
+  state.videoAnchorIndex = null;
   state.videoPanel = false;
   state.currentItem = await run(() => api(`/api/library/items/${itemId}`));
   updateHash();
@@ -518,8 +522,11 @@ function renderVideoStrip() {
     return;
   }
   strip.hidden = false;
+  const selCount = state.selectedVideoFiles.size;
   $("#video-strip-title").textContent = videos.length
-    ? `動画（${videos.length}）— クリックでプロパティ / 動画ファイルをドロップで追加`
+    ? selCount > 1
+      ? `動画（${videos.length}）— ${selCount} 件選択中（Del で削除）`
+      : `動画（${videos.length}）— クリックでプロパティ / Ctrl・Shift で複数選択 / ドロップで追加`
     : "この画像に動画を追加：動画ファイルをここにドロップ";
   list.innerHTML = "";
   if (videos.length === 0) {
@@ -528,10 +535,11 @@ function renderVideoStrip() {
     hint.textContent = "🎞 生成済みの動画ファイルをドロップして登録";
     list.appendChild(hint);
   }
-  for (const v of videos) {
+  videos.forEach((v, index) => {
     const card = document.createElement("div");
     card.className = "vstrip-card";
-    if (v.file === state.selectedVideoFile) card.classList.add("is-selected");
+    if (state.selectedVideoFiles.has(v.file)) card.classList.add("is-selected");
+    if (v.file === state.selectedVideoFile) card.classList.add("is-focused");
     const video = document.createElement("video");
     video.src = `/api/library/file/${item.id}/${v.file}`;
     video.preload = "metadata";
@@ -542,13 +550,47 @@ function renderVideoStrip() {
     label.textContent = v.prompt || v.file.split("/").pop();
     label.title = v.file;
     card.appendChild(label);
-    card.addEventListener("click", async () => {
-      state.selectedVideoFile = v.file;
-      renderVideoStrip();
-      await renderContext();
-    });
+    card.addEventListener("click", (e) => handleVideoClick(v.file, index, e));
     list.appendChild(card);
+  });
+}
+
+// 動画ストリップのクリック（修飾キーで複数選択）
+async function handleVideoClick(file, index, e) {
+  const videos = (state.currentItem?.videos || []).map((v) => v.file);
+  if (e.shiftKey && state.videoAnchorIndex != null) {
+    const [a, b] = [state.videoAnchorIndex, index].sort((x, y) => x - y);
+    state.selectedVideoFiles = new Set(videos.slice(a, b + 1));
+    state.selectedVideoFile = file;
+  } else if (e.ctrlKey || e.metaKey) {
+    if (state.selectedVideoFiles.has(file)) state.selectedVideoFiles.delete(file);
+    else state.selectedVideoFiles.add(file);
+    state.videoAnchorIndex = index;
+    state.selectedVideoFile = state.selectedVideoFiles.has(file)
+      ? file
+      : [...state.selectedVideoFiles].at(-1) || null;
+  } else {
+    state.selectedVideoFiles = new Set([file]);
+    state.selectedVideoFile = file;
+    state.videoAnchorIndex = index;
   }
+  renderVideoStrip();
+  await renderContext();
+}
+
+async function bulkDeleteVideos(itemId, files) {
+  if (!files.length) return;
+  if (!confirm(`選択した ${files.length} 件の動画を削除しますか？`)) return;
+  await run(async () => {
+    const res = await apiJson(`/api/library/items/${itemId}/videos/delete`, "POST", { files });
+    state.selectedVideoFiles = new Set();
+    state.selectedVideoFile = null;
+    state.currentItem = res;
+    renderVideoStrip();
+    await renderContext();
+    await loadItems();
+    setStatus(`${res.deleted} 件の動画を削除しました`);
+  });
 }
 
 async function deleteItemById(itemId, videoCount = 0) {
@@ -772,16 +814,19 @@ grid.addEventListener("drop", async (e) => {
   if (e.dataTransfer.files.length > 0) await importFiles(e.dataTransfer.files);
 });
 
-// Del キーで選択画像を一括削除（テキスト入力中は無効）
+// Del キー：動画を選択中なら動画を、そうでなければ画像を一括削除（入力中は無効）
 document.addEventListener("keydown", (e) => {
   if (e.key !== "Delete") return;
   const tag = (document.activeElement?.tagName || "").toLowerCase();
   if (tag === "input" || tag === "textarea" || document.activeElement?.isContentEditable) return;
-  // ライブラリタブでのみ
-  if ($("#view-library").hidden) return;
-  if (state.selectedIds.size === 0) return;
-  e.preventDefault();
-  bulkDelete([...state.selectedIds]);
+  if ($("#view-library").hidden) return; // ライブラリタブでのみ
+  if (state.selectedVideoFiles.size > 0 && state.selectedId) {
+    e.preventDefault();
+    bulkDeleteVideos(state.selectedId, [...state.selectedVideoFiles]);
+  } else if (state.selectedIds.size > 0) {
+    e.preventDefault();
+    bulkDelete([...state.selectedIds]);
+  }
 });
 
 // ---------------------------------------------------------------------------
@@ -791,7 +836,12 @@ document.addEventListener("keydown", (e) => {
 async function renderContext() {
   const el = $("#context");
   el.innerHTML = "";
-  // 複数選択中はまとめて操作するパネルを出す
+  // 動画を複数選択中はまとめて操作するパネル（画像より優先）
+  if (state.selectedVideoFiles.size > 1 && state.selectedId) {
+    renderMultiVideoContext(el);
+    return;
+  }
+  // 画像を複数選択中
   if (state.selectedIds.size > 1) {
     renderMultiSelectContext(el);
     return;
@@ -818,6 +868,35 @@ async function renderContext() {
     state.currentItem = null;
   }
   renderFolderContext(el);
+}
+
+function renderMultiVideoContext(el) {
+  const files = [...state.selectedVideoFiles];
+  const h = document.createElement("h2");
+  h.textContent = `動画 ${files.length} 件を選択中`;
+  el.appendChild(h);
+
+  const info = document.createElement("div");
+  info.className = "placeholder";
+  info.textContent =
+    "Ctrl+クリックで追加/解除、Shift+クリックで範囲選択。\nDel キーまたは下のボタンで一括削除できます。";
+  info.style.whiteSpace = "pre-wrap";
+  el.appendChild(info);
+
+  const delBtn = document.createElement("button");
+  delBtn.className = "danger";
+  delBtn.textContent = `🗑 選択した ${files.length} 件の動画を削除`;
+  delBtn.addEventListener("click", () => bulkDeleteVideos(state.selectedId, files));
+  el.appendChild(delBtn);
+
+  const clearBtn = document.createElement("button");
+  clearBtn.textContent = "選択を解除";
+  clearBtn.addEventListener("click", () => {
+    state.selectedVideoFiles = new Set(state.selectedVideoFile ? [state.selectedVideoFile] : []);
+    renderVideoStrip();
+    renderContext();
+  });
+  el.appendChild(clearBtn);
 }
 
 function renderMultiSelectContext(el) {
@@ -1701,6 +1780,7 @@ function renderVideoPropsContext(el, item, v) {
         method: "DELETE",
       });
       state.selectedVideoFile = null;
+      state.selectedVideoFiles = new Set();
       await reloadCurrentItem();
       await loadItems();
     }, "動画を削除しました");
