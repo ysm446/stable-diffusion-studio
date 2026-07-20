@@ -86,6 +86,75 @@ body {
   gap: 8px;
 }
 
+#btn-queue.is-running {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* 生成キューのパネル */
+.queue-panel[hidden] { display: none; }
+.queue-panel {
+  position: absolute;
+  top: 40px;
+  right: 8px;
+  z-index: 900;
+  width: 320px;
+  max-height: 60vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-pane);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+}
+
+.queue-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+}
+
+.queue-head-actions { display: flex; gap: 6px; }
+.queue-head-actions button { padding: 2px 8px; font-size: 11px; }
+
+.queue-list {
+  overflow: auto;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.queue-empty { color: var(--text-dim); text-align: center; font-size: 12px; }
+
+.queue-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  font-size: 12px;
+  background: var(--bg);
+}
+
+.queue-item.is-running { border-color: var(--accent); }
+.queue-item.is-error { border-color: var(--danger); }
+.queue-item.is-done { opacity: 0.6; }
+
+.queue-icon { flex: none; }
+.queue-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.queue-item button { flex: none; padding: 0 6px; font-size: 11px; }
+
 .service-status {
   display: flex;
   align-items: center;
@@ -538,6 +607,10 @@ textarea.auto-grow {
 
 .row { display: flex; gap: 6px; }
 .row > * { flex: 1; }
+
+.seed-row { display: flex; gap: 4px; }
+.seed-row input { flex: 1; min-width: 0; }
+.seed-row button { flex: none; padding: 4px 8px; }
 
 /* -------------------------------------------------------------- sequence */
 

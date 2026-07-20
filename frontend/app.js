@@ -46,7 +46,49 @@ const state = {
   rootInfo: null, // /api/library/root の結果
   llm: { models: [], loaded: null, selected: "" },
   genRef: null, // 生成パネル上部に表示する基準画像 {id, image, label}
+  queue: [], // 生成キュー
+  lastImageSeed: null, // 復元用（直近の画像シード）
+  lastVideoSeed: null, // 復元用（直近の動画シード）
 };
+
+// Seed 入力（🎲 ランダム / ♻ 直近シード復元 ボタン付き）
+function seedField(labelText, obj, getLast) {
+  const div = document.createElement("div");
+  div.className = "field";
+  const label = document.createElement("label");
+  label.textContent = labelText;
+  const row = document.createElement("div");
+  row.className = "seed-row";
+  const input = document.createElement("input");
+  input.type = "number";
+  input.value = obj.seed;
+  input.addEventListener("change", () => {
+    const n = parseInt(input.value, 10);
+    obj.seed = Number.isNaN(n) ? -1 : n;
+  });
+  const dice = document.createElement("button");
+  dice.textContent = "🎲";
+  dice.title = "ランダム（-1）";
+  dice.addEventListener("click", () => {
+    obj.seed = -1;
+    input.value = -1;
+  });
+  const restore = document.createElement("button");
+  restore.textContent = "♻";
+  restore.title = "直近に使ったシードに戻す";
+  restore.addEventListener("click", () => {
+    const last = getLast();
+    if (last !== null && last !== undefined) {
+      obj.seed = last;
+      input.value = last;
+    } else {
+      setGenStatus("復元できるシードがありません", true);
+    }
+  });
+  row.append(input, dice, restore);
+  div.append(label, row);
+  return div;
+}
 
 const VIDEO_SECTIONS = ["scene", "action", "camera", "style", "prompt"];
 
@@ -632,7 +674,10 @@ async function useItemForGeneration(item) {
   if (cfg !== undefined) g.cfg = cfg;
   if (p.sampler && state.options.forge_samplers.includes(p.sampler)) g.sampler = p.sampler;
   // Seed は流用（そのまま再現）。ランダムにしたいときはフォームで -1 にできる
-  if (item.seed !== null && item.seed !== undefined) g.seed = item.seed;
+  if (item.seed !== null && item.seed !== undefined) {
+    g.seed = item.seed;
+    state.lastImageSeed = item.seed;
+  }
 
   const folder = item.folder ?? state.folder ?? "";
   // フォルダ選択に切り替える（selectedId を外して生成パネルを表示）
@@ -1258,14 +1303,13 @@ function renderFolderContext(el) {
   }
 
   el.appendChild(
-    labeled("Seed（-1 でランダム）", makeInput("number", g.seed, (v) => (g.seed = parseInt(v, 10) ?? -1)))
+    seedField("Seed", g, () => state.lastImageSeed)
   );
 
   const genBtn = document.createElement("button");
   genBtn.className = "primary";
-  genBtn.textContent = state.genBusy ? "生成中..." : "🖼 生成してこのフォルダに保存";
-  genBtn.disabled = state.genBusy;
-  genBtn.addEventListener("click", () => runImageGeneration(genBtn));
+  genBtn.textContent = "🖼 生成キューに追加";
+  genBtn.addEventListener("click", enqueueImage);
   el.appendChild(genBtn);
   el.appendChild(genStatusLine());
 
@@ -1295,38 +1339,176 @@ function updateGenRefPreview() {
   box.append(label, img);
 }
 
-async function runImageGeneration(btn) {
-  if (state.genBusy) return;
-  const folder = state.folder;
-  state.genBusy = true;
-  btn.disabled = true;
-  btn.textContent = "生成中...";
+// ---------------------------------------------------------------------------
+// 生成キュー
+// ---------------------------------------------------------------------------
+
+let queueSeq = 0;
+let queueRunning = false;
+
+function enqueueImage() {
+  if (state.folder === null) {
+    setGenStatus("フォルダを選択してください", true);
+    return;
+  }
+  const label = (state.genImage.positive || "(プロンプトなし)").slice(0, 24);
+  state.queue.push({
+    id: ++queueSeq,
+    type: "image",
+    folder: state.folder,
+    params: { ...state.genImage },
+    status: "pending",
+    label: `画像: ${label}`,
+    message: "",
+  });
   saveGenSettings();
+  updateQueueUI();
+  processQueue();
+  setGenStatus("生成キューに追加しました");
+}
+
+function enqueueVideo(itemId, label) {
+  state.queue.push({
+    id: ++queueSeq,
+    type: "video",
+    itemId,
+    params: currentVideoSettings(),
+    status: "pending",
+    label: `動画: ${label || itemId}`,
+    message: "",
+  });
+  saveGenSettings();
+  updateQueueUI();
+  processQueue();
+  setGenStatus("生成キューに追加しました");
+}
+
+async function processQueue() {
+  if (queueRunning) return;
+  queueRunning = true;
+  updateQueueUI();
   try {
-    await streamGenerate(
-      "/api/generation/image",
-      { folder, ...state.genImage },
-      async (ev) => {
-        if (ev.type === "status") setGenStatus(ev.content);
-        else if (ev.type === "error") setGenStatus(ev.content, true);
-        else if (ev.type === "item") {
-          setGenStatus(ev.status || "生成完了");
-          // 生成結果を基準画像として上部に更新（元の絵を更新）
-          state.genRef = { id: ev.item.id, image: ev.item.image, label: "直近の生成" };
-          updateGenRefPreview();
-          await loadTree();
-          if (state.folder === folder && !state.selectedId) await loadItems();
-        }
+    while (true) {
+      const job = state.queue.find((j) => j.status === "pending");
+      if (!job) break;
+      job.status = "running";
+      updateQueueUI();
+      try {
+        if (job.type === "image") await runImageJob(job);
+        else await runVideoJob(job);
+        job.status = "done";
+      } catch (e) {
+        job.status = "error";
+        job.message = e.message;
+        setStatus(`生成エラー: ${e.message}`, true);
       }
-    );
-  } catch (e) {
-    setGenStatus(`生成エラー: ${e.message}`, true);
-  } finally {
-    state.genBusy = false;
-    if (btn.isConnected) {
-      btn.disabled = false;
-      btn.textContent = "🖼 生成してこのフォルダに保存";
+      updateQueueUI();
     }
+  } finally {
+    queueRunning = false;
+    updateQueueUI();
+  }
+}
+
+async function runImageJob(job) {
+  let err = null;
+  let result = null;
+  let status = "";
+  await streamGenerate("/api/generation/image", { folder: job.folder, ...job.params }, (ev) => {
+    if (ev.type === "status") setStatus(`[画像] ${ev.content}`);
+    else if (ev.type === "error") err = ev.content;
+    else if (ev.type === "item") {
+      result = ev.item;
+      status = ev.status || "生成完了";
+    }
+  });
+  if (err) throw new Error(err);
+  job.message = status;
+  if (result && result.seed !== null && result.seed !== undefined) {
+    state.lastImageSeed = result.seed;
+  }
+  await loadTree();
+  if (state.folder === job.folder) {
+    if (!state.selectedId && state.selectedIds.size === 0) await loadItems();
+    // 生成パネル表示中なら基準画像を更新
+    if (!state.selectedId && !state.videoPanel && result) {
+      state.genRef = { id: result.id, image: result.image, label: "直近の生成" };
+      updateGenRefPreview();
+    }
+  }
+  setStatus(status);
+}
+
+async function runVideoJob(job) {
+  let err = null;
+  let result = null;
+  let status = "";
+  await streamGenerate("/api/generation/video", { item_id: job.itemId, ...job.params }, (ev) => {
+    if (ev.type === "status") setStatus(`[動画] ${ev.content}`);
+    else if (ev.type === "error") err = ev.content;
+    else if (ev.type === "video") {
+      result = ev.item;
+      status = ev.status || "動画を生成しました";
+    }
+  });
+  if (err) throw new Error(err);
+  job.message = status;
+  if (typeof job.params.seed === "number" && job.params.seed >= 0) {
+    state.lastVideoSeed = job.params.seed;
+  }
+  await loadTree();
+  await loadItems();
+  if (state.selectedId === job.itemId && result) {
+    state.currentItem = result;
+    renderVideoStrip();
+  }
+  setStatus(status);
+}
+
+// キューボタン・パネルの表示更新
+function updateQueueUI() {
+  const active = state.queue.filter(
+    (j) => j.status === "pending" || j.status === "running"
+  ).length;
+  const btn = $("#btn-queue");
+  btn.hidden = state.queue.length === 0;
+  const running = state.queue.some((j) => j.status === "running");
+  btn.textContent = active > 0 ? `⏳ キュー ${active}` : "⏳ キュー";
+  btn.classList.toggle("is-running", running);
+  renderQueue();
+}
+
+function renderQueue() {
+  const list = $("#queue-list");
+  if (!list) return;
+  list.innerHTML = "";
+  if (state.queue.length === 0) {
+    list.innerHTML = '<p class="queue-empty">キューは空です</p>';
+    return;
+  }
+  const icons = { pending: "⏳", running: "▶", done: "✅", error: "⚠" };
+  for (const job of state.queue) {
+    const row = document.createElement("div");
+    row.className = `queue-item is-${job.status}`;
+    const icon = document.createElement("span");
+    icon.className = "queue-icon";
+    icon.textContent = icons[job.status] || "";
+    const label = document.createElement("span");
+    label.className = "queue-label";
+    label.textContent = job.label;
+    label.title = job.message || job.label;
+    row.append(icon, label);
+    if (job.status === "pending") {
+      const rm = document.createElement("button");
+      rm.textContent = "✕";
+      rm.title = "キューから削除";
+      rm.addEventListener("click", () => {
+        state.queue = state.queue.filter((j) => j.id !== job.id);
+        updateQueueUI();
+      });
+      row.appendChild(rm);
+    }
+    list.appendChild(row);
   }
 }
 
@@ -1355,6 +1537,7 @@ function renderVideoGenContext(el, item) {
       g.height = vs.height ?? "";
       g.frames = vs.frames ?? "";
       g.seed = vs.seed ?? -1;
+      if (typeof vs.seed === "number" && vs.seed >= 0) state.lastVideoSeed = vs.seed;
     } else if (!g.prompt) {
       g.prompt = item.prompt || "";
     }
@@ -1481,19 +1664,13 @@ function renderVideoGenContext(el, item) {
   );
   el.appendChild(row);
 
-  const row2 = document.createElement("div");
-  row2.className = "row";
-  row2.append(
-    labeled("Frames（空でWF値）", makeInput("number", g.frames, (v) => (g.frames = v))),
-    labeled("Seed（-1ランダム）", makeInput("number", g.seed, (v) => (g.seed = parseInt(v, 10) ?? -1)))
-  );
-  el.appendChild(row2);
+  el.appendChild(labeled("Frames（空でWF値）", makeInput("number", g.frames, (v) => (g.frames = v))));
+  el.appendChild(seedField("Seed", g, () => state.lastVideoSeed));
 
   const genBtn = document.createElement("button");
   genBtn.className = "primary";
-  genBtn.textContent = state.genBusy ? "生成中..." : "🎞 動画を生成してこの画像に紐づけ";
-  genBtn.disabled = state.genBusy;
-  genBtn.addEventListener("click", () => runVideoGeneration(genBtn, item.id));
+  genBtn.textContent = "🎞 動画生成をキューに追加";
+  genBtn.addEventListener("click", () => enqueueVideo(item.id, item.prompt || item.id));
   el.appendChild(genBtn);
 
   const saveSettingsBtn = document.createElement("button");
@@ -1595,39 +1772,6 @@ function currentVideoSettings() {
     frames: g.frames,
     seed: g.seed,
   };
-}
-
-async function runVideoGeneration(btn, itemId) {
-  if (state.genBusy) return;
-  state.genBusy = true;
-  btn.disabled = true;
-  btn.textContent = "生成中...";
-  saveGenSettings();
-  try {
-    await streamGenerate(
-      "/api/generation/video",
-      { item_id: itemId, ...currentVideoSettings() },
-      async (ev) => {
-        if (ev.type === "status") setGenStatus(ev.content);
-        else if (ev.type === "error") setGenStatus(ev.content, true);
-        else if (ev.type === "video") {
-          setGenStatus(ev.status || "動画を生成しました");
-          await loadTree();
-          await loadItems();
-          if (state.currentItem) state.currentItem = ev.item;
-          renderVideoStrip();
-        }
-      }
-    );
-  } catch (e) {
-    setGenStatus(`生成エラー: ${e.message}`, true);
-  } finally {
-    state.genBusy = false;
-    if (btn.isConnected) {
-      btn.disabled = false;
-      btn.textContent = "🎞 動画を生成してこの画像に紐づけ";
-    }
-  }
 }
 
 function renderItemContext(el, item) {
@@ -2045,6 +2189,19 @@ for (const tab of document.querySelectorAll(".topbar-tab")) {
 }
 
 initSequenceView();
+
+// 生成キューのパネル開閉
+$("#btn-queue").addEventListener("click", () => {
+  const panel = $("#queue-panel");
+  panel.hidden = !panel.hidden;
+});
+$("#btn-queue-close").addEventListener("click", () => {
+  $("#queue-panel").hidden = true;
+});
+$("#btn-queue-clear").addEventListener("click", () => {
+  state.queue = state.queue.filter((j) => j.status === "pending" || j.status === "running");
+  updateQueueUI();
+});
 
 $("#btn-reindex").addEventListener("click", async () => {
   await run(async () => {

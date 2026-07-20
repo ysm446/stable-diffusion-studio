@@ -16,10 +16,22 @@
       </div>
       <div class="topbar-actions">
         <div id="service-status" class="service-status" title="バックエンドの起動状態（クリックで再確認）"></div>
+        <button type="button" id="btn-queue" title="生成キュー" hidden>⏳ キュー</button>
         <button type="button" id="btn-embed" title="ベクトル検索用の embedding を差分更新する（embedding サーバーを起動します）">Embedding 更新</button>
         <button type="button" id="btn-reindex" title="全フォルダを走査してインデックスを作り直す">インデックス再構築</button>
       </div>
     </header>
+
+    <div id="queue-panel" class="queue-panel" hidden>
+      <div class="queue-head">
+        <span>生成キュー</span>
+        <div class="queue-head-actions">
+          <button type="button" id="btn-queue-clear" title="完了・エラーを消去">完了を消去</button>
+          <button type="button" id="btn-queue-close">✕</button>
+        </div>
+      </div>
+      <div id="queue-list" class="queue-list"></div>
+    </div>
 
     <main class="panes" id="view-library">
       <!-- 左: フォルダツリー -->
