@@ -130,6 +130,36 @@ async function selectSequence(id) {
   renderList();
   renderGraph();
   if (seqState.seq && seqState.seq.nodes.length) fitView();
+  loadSequenceIntoPlayer();
+}
+
+// シーケンス選択時：先頭クリップをプレイヤーに頭出しロード（再生はしない）。
+// シークバーは順路全体の長さにしておく。
+async function loadSequenceIntoPlayer() {
+  const player = $("#seq-player");
+  if (!seqState.seq) {
+    player.removeAttribute("src");
+    player.load?.();
+    return;
+  }
+  const forId = seqState.currentId;
+  const order = nodeOrder(seqState.seq.nodes, seqState.seq.edges);
+  const t = await measureOrder(order);
+  // 計測中に別シーケンスへ切り替わっていたら破棄
+  if (seqState.currentId !== forId) return;
+  seqState.playOrder = order;
+  seqState.transport = t;
+  seqState.playPos = -1;
+  seqState.playHighlight = null;
+  if (t.nodes.length) {
+    player.src = clipUrl(t.nodes[0]);
+    player.load?.();
+  } else {
+    player.removeAttribute("src");
+    player.load?.();
+  }
+  updateTransportUI(0, t.total);
+  setPlayToggle(false);
 }
 
 // ---------------------------------------------------------------------------
@@ -641,9 +671,14 @@ async function playFrom(nodeId) {
 
 function playAt(pos, seekInClip = 0) {
   const t = seqState.transport;
-  if (!t || pos < 0 || pos >= t.nodes.length) {
+  if (!t || !t.nodes.length) {
     stopPlayback();
     renderGraph();
+    return;
+  }
+  if (pos < 0 || pos >= t.nodes.length) {
+    // 末尾まで再生し終えたら先頭に頭出しして待機（トランスポートは保持）
+    resetToHead();
     return;
   }
   const node = t.nodes[pos];
@@ -688,11 +723,32 @@ function seekTo(fraction) {
   playAt(pos, target - t.offsets[pos]);
 }
 
+// 先頭クリップに頭出しして待機（再生はしない）。トランスポートは保持
+function resetToHead() {
+  const t = seqState.transport;
+  seqState.playPos = -1;
+  seqState.playHighlight = null;
+  renderGraph();
+  const player = $("#seq-player");
+  player.onended = null;
+  player.ontimeupdate = null;
+  if (t && t.nodes.length) {
+    player.src = clipUrl(t.nodes[0]);
+    player.load?.();
+  }
+  updateTransportUI(0, t ? t.total : 0);
+  setPlayToggle(false);
+}
+
 function togglePlay() {
   const player = $("#seq-player");
-  if (!seqState.transport) {
-    // 未再生 → 連続再生を開始
+  if (!seqState.transport || !seqState.transport.nodes.length) {
     if (seqState.seq) playSequence();
+    return;
+  }
+  if (seqState.playPos < 0) {
+    // 頭出しロード済み → 現在位置（先頭 or シーク位置）から再生開始
+    playAt(0, player.currentTime || 0);
     return;
   }
   if (player.paused) {
