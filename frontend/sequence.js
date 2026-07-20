@@ -632,6 +632,12 @@ function setPlayToggle(playing) {
 }
 
 function startBgm() {
+  // 試聴が鳴っていたら止める（重複再生を防ぐ）
+  if (previewName) {
+    previewAudio.pause();
+    previewName = null;
+    renderBgm();
+  }
   const bgm = seqState.seq?.bgm;
   if (!bgm || !bgm.file) return;
   const audio = $("#seq-bgm-audio");
@@ -785,6 +791,32 @@ function togglePlay() {
 // BGM
 // ---------------------------------------------------------------------------
 
+// 試聴用の共有オーディオ（連打・重複再生を防ぐ）
+const previewAudio = new Audio();
+let previewName = null;
+previewAudio.addEventListener("ended", () => {
+  previewName = null;
+  renderBgm();
+});
+
+function bgmFileUrl(name) {
+  return `/api/library/bgm/${encodeURIComponent(name)}/file`;
+}
+
+function togglePreview(name) {
+  if (previewName === name && !previewAudio.paused) {
+    previewAudio.pause();
+    previewAudio.currentTime = 0;
+    previewName = null;
+  } else {
+    previewAudio.src = bgmFileUrl(name);
+    previewAudio.currentTime = 0;
+    previewAudio.play().catch(() => {});
+    previewName = name;
+  }
+  renderBgm();
+}
+
 async function loadBgm() {
   try {
     seqState.bgmList = (await api("/api/library/bgm")).bgm;
@@ -854,13 +886,11 @@ function renderBgm() {
   for (const b of seqState.bgmList) {
     const item = document.createElement("div");
     item.className = "seq-bgm-item";
+    const playing = previewName === b.name;
     const play = document.createElement("button");
-    play.textContent = "▶";
-    play.title = "試聴";
-    play.addEventListener("click", () => {
-      const a = new Audio(`/api/library/bgm/${encodeURIComponent(b.name)}/file`);
-      a.play().catch(() => {});
-    });
+    play.textContent = playing ? "⏹" : "▶";
+    play.title = playing ? "停止" : "試聴";
+    play.addEventListener("click", () => togglePreview(b.name));
     const name = document.createElement("span");
     name.className = "seq-bgm-name";
     name.textContent = b.name;
@@ -871,6 +901,10 @@ function renderBgm() {
     del.title = "BGM を削除";
     del.addEventListener("click", async () => {
       if (!confirm(`BGM「${b.name}」を削除しますか？`)) return;
+      if (previewName === b.name) {
+        previewAudio.pause();
+        previewName = null;
+      }
       await api(`/api/library/bgm/${encodeURIComponent(b.name)}`, { method: "DELETE" });
       await loadBgm();
     });
