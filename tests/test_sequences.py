@@ -56,20 +56,32 @@ def main() -> None:
     items.add_video(item_id, make_clip("red"), prompt="red clip")
     items.add_video(item_id, make_clip("blue"), prompt="blue clip")
 
-    # --- CRUD ---
+    # --- ノードグラフ CRUD ---
     seq = sequences.create_sequence("テスト")
     assert sequences.list_sequences()[0]["id"] == seq["id"]
     seq = sequences.update_sequence(
         seq["id"],
         {
-            "clips": [
-                {"item_id": item_id, "file": "videos/v001.mp4"},
-                {"item_id": item_id, "file": "videos/v002.mp4"},
-            ]
+            "nodes": [
+                {"id": 1, "item_id": item_id, "file": "videos/v001.mp4", "x": 0, "y": 0},
+                {"id": 2, "item_id": item_id, "file": "videos/v002.mp4", "x": 200, "y": 0},
+            ],
+            "edges": [{"src": 1, "dst": 2}],
         },
     )
-    resolved = sequences.resolve_clips(seq)
-    assert len(resolved) == 2 and not any(c["missing"] for c in resolved)
+    order = sequences.node_order(seq["nodes"], seq["edges"])
+    assert order == [1, 2], order
+    ordered = sequences.resolve_ordered_clips(seq)
+    assert len(ordered) == 2 and not any(c["missing"] for c in ordered)
+
+    # つながっていないノードは順路に含まれない
+    seq2 = sequences.update_sequence(seq["id"], {"edges": []})
+    assert len(sequences.resolve_ordered_clips(seq2)) == 1  # 起点1つ（最長=単独ノード）
+
+    # 逆順につなぐと順序も逆
+    seq = sequences.update_sequence(seq["id"], {"edges": [{"src": 2, "dst": 1}]})
+    assert sequences.node_order(seq["nodes"], seq["edges"]) == [2, 1]
+    seq = sequences.update_sequence(seq["id"], {"edges": [{"src": 1, "dst": 2}]})
 
     statuses: list[str] = []
 
@@ -86,10 +98,11 @@ def main() -> None:
     seq = sequences.update_sequence(
         seq["id"],
         {
-            "clips": [
-                {"item_id": item_id, "file": "videos/v001.mp4"},
-                {"item_id": item_id, "file": "videos/v003.mp4"},
-            ]
+            "nodes": [
+                {"id": 1, "item_id": item_id, "file": "videos/v001.mp4", "x": 0, "y": 0},
+                {"id": 3, "item_id": item_id, "file": "videos/v003.mp4", "x": 200, "y": 0},
+            ],
+            "edges": [{"src": 1, "dst": 3}],
         },
     )
     result2 = sequence_export.export_sequence(seq["id"], statuses.append)
@@ -98,16 +111,33 @@ def main() -> None:
     info2 = sequence_export.probe(str(out2))
     assert info2["width"] == 320 and info2["height"] == 240  # 先頭クリップに正規化
 
-    # --- 欠落クリップの検出 ---
+    # --- 欠落ノードの検出 ---
     items.remove_video(item_id, "v001.mp4")
     seq = sequences.get_sequence(seq["id"])
-    resolved = sequences.resolve_clips(seq)
-    assert resolved[0]["missing"] is True
+    resolved = sequences.resolve_nodes(seq)
+    assert any(n["missing"] for n in resolved)
     try:
         sequence_export.export_sequence(seq["id"], statuses.append)
         raise AssertionError("欠落クリップでエラーになるべき")
     except sequence_export.ExportError as e:
         assert "欠落" in str(e)
+
+    # --- 旧形式（clips）の自動移行 ---
+    import json as _json
+
+    legacy_path = sequences._seq_path(seq["id"])
+    legacy = {
+        "id": seq["id"],
+        "name": "legacy",
+        "clips": [
+            {"item_id": item_id, "file": "videos/v002.mp4"},
+            {"item_id": item_id, "file": "videos/v003.mp4"},
+        ],
+    }
+    legacy_path.write_text(_json.dumps(legacy), encoding="utf-8")
+    migrated = sequences.get_sequence(seq["id"])
+    assert len(migrated["nodes"]) == 2 and len(migrated["edges"]) == 1
+    assert sequences.node_order(migrated["nodes"], migrated["edges"]) == [1, 2]
 
     # --- 削除 ---
     sequences.delete_sequence(seq["id"])

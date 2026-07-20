@@ -76,17 +76,24 @@
         <div id="seq-list" class="tree"></div>
       </aside>
 
-      <!-- 中央: プレビュー + クリップ並び -->
+      <!-- 中央: プレビュー + ノードグラフ -->
       <section class="pane pane-seq-editor">
         <div class="pane-toolbar">
-          <button type="button" id="btn-seq-play">▶ 連続再生</button>
-          <button type="button" id="btn-seq-export" class="primary">連結書き出し</button>
+          <button type="button" id="btn-seq-play" title="順路を先頭から連続再生">▶ 連続再生</button>
+          <button type="button" id="btn-seq-fit" title="全ノードが収まるように表示">⤢ フィット</button>
+          <button type="button" id="btn-seq-export" class="primary" title="順路を無劣化連結して書き出し">連結書き出し</button>
           <span id="seq-status" class="gen-status"></span>
         </div>
         <div class="seq-player-wrap">
           <video id="seq-player" controls></video>
         </div>
-        <div id="seq-clips" class="seq-clips"></div>
+        <div id="seq-canvas" class="seq-canvas">
+          <div id="seq-canvas-inner" class="seq-canvas-inner">
+            <svg id="seq-edges" class="seq-edges"></svg>
+            <div id="seq-nodes"></div>
+          </div>
+          <p id="seq-canvas-hint" class="seq-canvas-empty"></p>
+        </div>
       </section>
 
       <!-- 右: クリップパレット -->

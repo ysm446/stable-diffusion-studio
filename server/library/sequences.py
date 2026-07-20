@@ -1,8 +1,11 @@
-"""シーケンス（クリップの並び）の CRUD。
+"""シーケンス（クリップのノードグラフ）の CRUD。
 
 シーケンスは ``.studio/sequences/<id>.json`` に保存する。クリップは
-``{item_id, file}`` の参照で持ち、実体はアイテムフォルダの動画。
-参照切れ（画像・動画の削除）は解決時に ``missing`` フラグで返す。
+``{item_id, file}`` の参照でノードとして持ち、ノード間を edge（out→in の一本道）で
+つなぐ。実体はアイテムフォルダの動画。参照切れ（画像・動画の削除）は解決時に
+``missing`` フラグで返す。
+
+旧形式（``clips`` の線形リスト）は読み込み時に nodes+edges の一本道へ自動移行する。
 """
 
 from __future__ import annotations
@@ -41,10 +44,67 @@ def create_sequence(name: str) -> dict[str, Any]:
         "name": (name or "").strip() or "新しいシーケンス",
         "created_at": now_iso(),
         "updated_at": now_iso(),
-        "clips": [],
+        "nodes": [],
+        "edges": [],
     }
     _save(seq)
     return seq
+
+
+def _migrate(seq: dict[str, Any]) -> dict[str, Any]:
+    """旧形式（clips の線形リスト）を nodes+edges へ移行する。"""
+    if "nodes" in seq:
+        seq.setdefault("edges", [])
+        return seq
+    clips = seq.get("clips") or []
+    nodes = []
+    edges = []
+    for i, c in enumerate(clips):
+        nid = i + 1
+        nodes.append(
+            {
+                "id": nid,
+                "item_id": str(c.get("item_id", "")),
+                "file": str(c.get("file", "")),
+                "x": 40 + i * 180,
+                "y": 60,
+            }
+        )
+        if i > 0:
+            edges.append({"src": i, "dst": nid})
+    seq["nodes"] = nodes
+    seq["edges"] = edges
+    seq.pop("clips", None)
+    return seq
+
+
+def node_order(nodes: list[dict[str, Any]], edges: list[dict[str, Any]]) -> list[int]:
+    """edge から最長の一本道（順路）のノード ID 列を返す。
+
+    各ノードの out は高々1本。入辺のないノードを起点に鎖を辿り、最長のものを採用する。
+    """
+    next_of: dict[int, int] = {}
+    has_incoming: set[int] = set()
+    node_ids = [n["id"] for n in nodes]
+    id_set = set(node_ids)
+    for e in edges:
+        src, dst = e.get("src"), e.get("dst")
+        if src in id_set and dst in id_set:
+            next_of[src] = dst
+            has_incoming.add(dst)
+    starts = [nid for nid in node_ids if nid not in has_incoming]
+    best: list[int] = []
+    for start in starts:
+        chain: list[int] = []
+        seen: set[int] = set()
+        cur: int | None = start
+        while cur is not None and cur not in seen:
+            chain.append(cur)
+            seen.add(cur)
+            cur = next_of.get(cur)
+        if len(chain) > len(best):
+            best = chain
+    return best
 
 
 def list_sequences() -> list[dict[str, Any]]:
@@ -52,11 +112,12 @@ def list_sequences() -> list[dict[str, Any]]:
     for path in sorted(paths.sequences_dir().glob("*.json")):
         try:
             seq = json.loads(path.read_text(encoding="utf-8"))
+            n = len(seq.get("nodes") if "nodes" in seq else (seq.get("clips") or []))
             result.append(
                 {
                     "id": seq["id"],
                     "name": seq.get("name", ""),
-                    "clip_count": len(seq.get("clips") or []),
+                    "clip_count": n,
                     "updated_at": seq.get("updated_at"),
                 }
             )
@@ -70,7 +131,50 @@ def get_sequence(seq_id: str) -> dict[str, Any]:
     path = _seq_path(seq_id)
     if not path.is_file():
         raise SequenceNotFound(f"sequence not found: {seq_id}")
-    return json.loads(path.read_text(encoding="utf-8"))
+    return _migrate(json.loads(path.read_text(encoding="utf-8")))
+
+
+def _validate_nodes(nodes: Any) -> list[dict[str, Any]]:
+    if not isinstance(nodes, list):
+        raise SequenceError("nodes must be a list")
+    out = []
+    seen_ids = set()
+    for n in nodes:
+        if not isinstance(n, dict) or not n.get("item_id") or not n.get("file"):
+            raise SequenceError(f"invalid node: {n!r}")
+        nid = int(n["id"])
+        if nid in seen_ids:
+            raise SequenceError(f"duplicate node id: {nid}")
+        seen_ids.add(nid)
+        out.append(
+            {
+                "id": nid,
+                "item_id": str(n["item_id"]),
+                "file": str(n["file"]),
+                "x": float(n.get("x", 0)),
+                "y": float(n.get("y", 0)),
+            }
+        )
+    return out
+
+
+def _validate_edges(edges: Any, node_ids: set[int]) -> list[dict[str, Any]]:
+    if not isinstance(edges, list):
+        raise SequenceError("edges must be a list")
+    out = []
+    used_src = set()
+    used_dst = set()
+    for e in edges:
+        src, dst = int(e["src"]), int(e["dst"])
+        # 一本道: 各ノードの out/in は高々1本、自己ループ禁止
+        if src == dst or src not in node_ids or dst not in node_ids:
+            continue
+        if src in used_src or dst in used_dst:
+            continue
+        used_src.add(src)
+        used_dst.add(dst)
+        out.append({"src": src, "dst": dst})
+    return out
 
 
 def update_sequence(seq_id: str, fields: dict[str, Any]) -> dict[str, Any]:
@@ -79,16 +183,15 @@ def update_sequence(seq_id: str, fields: dict[str, Any]) -> dict[str, Any]:
         name = str(fields["name"]).strip()
         if name:
             seq["name"] = name
-    if "clips" in fields:
-        clips = fields["clips"]
-        if not isinstance(clips, list):
-            raise SequenceError("clips must be a list")
-        normalized = []
-        for c in clips:
-            if not isinstance(c, dict) or not c.get("item_id") or not c.get("file"):
-                raise SequenceError(f"invalid clip entry: {c!r}")
-            normalized.append({"item_id": str(c["item_id"]), "file": str(c["file"])})
-        seq["clips"] = normalized
+    if "nodes" in fields:
+        seq["nodes"] = _validate_nodes(fields["nodes"])
+    if "edges" in fields:
+        node_ids = {n["id"] for n in seq["nodes"]}
+        seq["edges"] = _validate_edges(fields["edges"], node_ids)
+    else:
+        # ノード更新でノードが減った場合、無効な edge を落とす
+        node_ids = {n["id"] for n in seq["nodes"]}
+        seq["edges"] = _validate_edges(seq.get("edges") or [], node_ids)
     seq["updated_at"] = now_iso()
     _save(seq)
     return seq
@@ -101,33 +204,36 @@ def delete_sequence(seq_id: str) -> None:
     path.unlink()
 
 
-def resolve_clips(seq: dict[str, Any]) -> list[dict[str, Any]]:
-    """クリップ参照を実ファイルに解決する。欠落は missing=True で返す。
-
-    表示用に動画プロンプトとアイテムのサムネイル名も付与する。
-    """
+def resolve_nodes(seq: dict[str, Any]) -> list[dict[str, Any]]:
+    """全ノードを実ファイルに解決する（表示用。missing・thumb・prompt を付与）。"""
     resolved = []
     meta_cache: dict[str, dict[str, Any]] = {}
-    for clip in seq.get("clips") or []:
-        entry: dict[str, Any] = dict(clip)
+    for node in seq.get("nodes") or []:
+        entry: dict[str, Any] = dict(node)
         entry["missing"] = True
         entry["path"] = None
         try:
-            d = items.item_dir(clip["item_id"])
-            target = (d / clip["file"]).resolve()
+            d = items.item_dir(node["item_id"])
+            target = (d / node["file"]).resolve()
             if d.resolve() in target.parents and target.is_file():
                 entry["missing"] = False
                 entry["path"] = str(target)
-            if clip["item_id"] not in meta_cache:
-                meta_cache[clip["item_id"]] = load_meta(d)
-            meta = meta_cache[clip["item_id"]]
+            if node["item_id"] not in meta_cache:
+                meta_cache[node["item_id"]] = load_meta(d)
+            meta = meta_cache[node["item_id"]]
             entry["thumb"] = meta.get("thumb")
             for v in meta.get("videos") or []:
-                if v.get("file") == clip["file"]:
+                if v.get("file") == node["file"]:
                     entry["prompt"] = v.get("prompt") or ""
-                    entry["workflow"] = v.get("workflow") or ""
                     break
         except (items.NotFound, OSError, ValueError):
             pass
         resolved.append(entry)
     return resolved
+
+
+def resolve_ordered_clips(seq: dict[str, Any]) -> list[dict[str, Any]]:
+    """順路（node_order）に沿って解決済みクリップを返す（書き出し用）。"""
+    by_id = {n["id"]: n for n in resolve_nodes(seq)}
+    order = node_order(seq.get("nodes") or [], seq.get("edges") or [])
+    return [by_id[nid] for nid in order if nid in by_id]

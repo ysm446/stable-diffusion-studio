@@ -29,7 +29,8 @@ class SequenceCreate(BaseModel):
 
 class SequenceUpdate(BaseModel):
     name: str | None = None
-    clips: list[dict[str, Any]] | None = None
+    nodes: list[dict[str, Any]] | None = None
+    edges: list[dict[str, Any]] | None = None
 
 
 @router.get("")
@@ -45,15 +46,15 @@ def create_sequence(body: SequenceCreate) -> dict[str, Any]:
 @router.get("/{seq_id}")
 def get_sequence(seq_id: str) -> dict[str, Any]:
     seq = _wrap(sequences.get_sequence, seq_id)
-    seq["clips"] = _wrap(sequences.resolve_clips, seq)
+    seq["nodes"] = _wrap(sequences.resolve_nodes, seq)
     return seq
 
 
 @router.patch("/{seq_id}")
 def update_sequence(seq_id: str, body: SequenceUpdate) -> dict[str, Any]:
-    fields = {k: v for k, v in body.model_dump().items() if v is not None}
+    fields = {k: v for k, v in body.model_dump(exclude_unset=True).items()}
     seq = _wrap(sequences.update_sequence, seq_id, fields)
-    seq["clips"] = _wrap(sequences.resolve_clips, seq)
+    seq["nodes"] = _wrap(sequences.resolve_nodes, seq)
     return seq
 
 

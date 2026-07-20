@@ -98,9 +98,9 @@ def _unique_path(directory: Path, stem: str, ext: str = ".mp4") -> Path:
 
 def export_sequence(seq_id: str, status: StatusFn) -> dict[str, Any]:
     seq = sequences.get_sequence(seq_id)
-    clips = sequences.resolve_clips(seq)
+    clips = sequences.resolve_ordered_clips(seq)
     if not clips:
-        raise ExportError("クリップがありません")
+        raise ExportError("順路につながったクリップがありません（ノードを線でつないでください）")
     missing = [c for c in clips if c["missing"]]
     if missing:
         names = ", ".join(f'{c["item_id"]}/{c["file"]}' for c in missing[:5])
