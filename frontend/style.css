@@ -413,6 +413,30 @@ body {
   background: #111;
 }
 
+/* 生成パネル上部の基準画像 */
+.gen-ref[hidden] { display: none; }
+
+.gen-ref {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px;
+  background: var(--bg);
+}
+
+.gen-ref-label {
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-bottom: 4px;
+}
+
+.gen-ref-img {
+  width: 100%;
+  border-radius: 4px;
+  background: #111;
+  cursor: zoom-in;
+  display: block;
+}
+
 .field label {
   display: block;
   color: var(--text-dim);

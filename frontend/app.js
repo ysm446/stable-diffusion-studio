@@ -45,6 +45,7 @@ const state = {
   },
   rootInfo: null, // /api/library/root の結果
   llm: { models: [], loaded: null, selected: "" },
+  genRef: null, // 生成パネル上部に表示する基準画像 {id, image, label}
 };
 
 const VIDEO_SECTIONS = ["scene", "action", "camera", "style", "prompt"];
@@ -215,6 +216,7 @@ async function selectFolder(rel) {
   state.anchorIndex = null;
   state.videoPanel = false;
   state.query = "";
+  state.genRef = null; // 別フォルダに移ったら基準画像はクリア
   $("#search").value = "";
   updateHash();
   renderTree();
@@ -636,9 +638,12 @@ async function useItemForGeneration(item) {
   // フォルダ選択に切り替える（selectedId を外して生成パネルを表示）
   state.folder = folder;
   state.selectedId = null;
+  state.selectedIds = new Set();
   state.videoPanel = false;
   state.query = "";
   $("#search").value = "";
+  // 生成パネル上部に元画像を表示（生成するたびに更新される）
+  state.genRef = { id: item.id, image: item.image, label: "元の画像" };
   updateHash();
   renderTree();
   await loadItems();
@@ -1148,6 +1153,12 @@ function renderFolderContext(el) {
     return;
   }
 
+  // 基準画像のプレビュー（この設定で新規生成の元画像 / 直近の生成結果）
+  const refBox = document.createElement("div");
+  refBox.id = "gen-ref";
+  refBox.className = "gen-ref";
+  el.appendChild(refBox);
+
   const g = state.genImage;
   el.appendChild(
     labeled("バックエンド", makeSelect(state.options.backends, g.backend, (v) => {
@@ -1257,6 +1268,31 @@ function renderFolderContext(el) {
   genBtn.addEventListener("click", () => runImageGeneration(genBtn));
   el.appendChild(genBtn);
   el.appendChild(genStatusLine());
+
+  updateGenRefPreview();
+}
+
+// 生成パネル上部の基準画像プレビューを更新（再描画せず src だけ差し替え）
+function updateGenRefPreview() {
+  const box = document.getElementById("gen-ref");
+  if (!box) return;
+  box.innerHTML = "";
+  if (!state.genRef) {
+    box.hidden = true;
+    return;
+  }
+  box.hidden = false;
+  const label = document.createElement("div");
+  label.className = "gen-ref-label";
+  label.textContent = state.genRef.label || "元の画像";
+  const img = document.createElement("img");
+  img.className = "gen-ref-img";
+  img.src = `/api/library/file/${state.genRef.id}/${state.genRef.image}`;
+  img.title = "クリックで原寸表示";
+  img.addEventListener("click", () =>
+    window.open(`/api/library/file/${state.genRef.id}/${state.genRef.image}`, "_blank")
+  );
+  box.append(label, img);
 }
 
 async function runImageGeneration(btn) {
@@ -1275,6 +1311,9 @@ async function runImageGeneration(btn) {
         else if (ev.type === "error") setGenStatus(ev.content, true);
         else if (ev.type === "item") {
           setGenStatus(ev.status || "生成完了");
+          // 生成結果を基準画像として上部に更新（元の絵を更新）
+          state.genRef = { id: ev.item.id, image: ev.item.image, label: "直近の生成" };
+          updateGenRefPreview();
           await loadTree();
           if (state.folder === folder && !state.selectedId) await loadItems();
         }
