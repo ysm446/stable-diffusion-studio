@@ -27,8 +27,9 @@ const state = {
     seed: -1,
     workflow: "",
   },
-  genVideo: { prompt: "", workflow: "", width: "", height: "", frames: "", seed: -1 },
+  genVideo: { prompt: "", workflow: "", width: "", height: "", frames: "", seed: -1, extra: "" },
   rootInfo: null, // /api/library/root の結果
+  llm: { models: [], loaded: null, selected: "" },
 };
 
 function rootName() {
@@ -940,7 +941,85 @@ function renderVideoGenContext(el, item) {
     g.workflow = state.options.video_workflows[0];
   }
 
-  el.appendChild(labeled("動画プロンプト", makeTextarea(g.prompt, 5, (v) => (g.prompt = v))));
+  // LLM で動画プロンプトを生成 --------------------------------------------
+  const llmBox = document.createElement("div");
+  llmBox.className = "llm-box";
+
+  const llmHead = document.createElement("div");
+  llmHead.className = "llm-head";
+  llmHead.textContent = "🤖 LLM で動画プロンプトを生成";
+  llmBox.appendChild(llmHead);
+
+  llmBox.appendChild(
+    labeled(
+      "追加指示（任意）",
+      makeTextarea(g.extra, 2, (v) => (g.extra = v))
+    )
+  );
+
+  // モデル選択（未ロード時のみ表示）
+  const modelRow = document.createElement("div");
+  modelRow.className = "llm-model-row";
+  llmBox.appendChild(modelRow);
+
+  const renderModelRow = () => {
+    modelRow.innerHTML = "";
+    if (state.llm.loaded) {
+      const info = document.createElement("div");
+      info.className = "palette-sub";
+      info.textContent = `モデル: ${state.llm.loaded}`;
+      const unload = document.createElement("button");
+      unload.textContent = "アンロード";
+      unload.addEventListener("click", async () => {
+        await run(() => api("/api/llm/unload", { method: "POST" }));
+        state.llm.loaded = null;
+        renderModelRow();
+      });
+      modelRow.append(info, unload);
+    } else {
+      const sel = makeSelect(
+        state.llm.models,
+        state.llm.selected || state.llm.models[0] || "",
+        (v) => (state.llm.selected = v)
+      );
+      if (!state.llm.selected && state.llm.models[0]) state.llm.selected = state.llm.models[0];
+      const load = document.createElement("button");
+      load.textContent = "ロード";
+      load.addEventListener("click", async () => {
+        const model = state.llm.selected || state.llm.models[0];
+        if (!model) {
+          setGenStatus("models/ に GGUF モデルが見つかりません", true);
+          return;
+        }
+        load.disabled = true;
+        setGenStatus(`モデルをロード中: ${model} ...`);
+        const ok = await run(() => apiJson("/api/llm/load", "POST", { model }));
+        load.disabled = false;
+        if (ok) {
+          state.llm.loaded = ok.loaded;
+          setGenStatus(`モデルをロードしました: ${ok.loaded}`);
+          renderModelRow();
+        }
+      });
+      modelRow.append(labeled("LLM モデル", sel), load);
+    }
+  };
+  renderModelRow();
+  // モデル一覧・ロード状態を取得して行を更新
+  loadLlmModels().then(renderModelRow);
+
+  const genPromptBtn = document.createElement("button");
+  genPromptBtn.className = "primary";
+  genPromptBtn.textContent = "✨ 動画プロンプトを生成";
+  genPromptBtn.addEventListener("click", () =>
+    generateVideoPrompt(genPromptBtn, item.id, promptField)
+  );
+  llmBox.appendChild(genPromptBtn);
+  el.appendChild(llmBox);
+
+  // 動画プロンプト本文
+  const promptField = makeTextarea(g.prompt, 5, (v) => (g.prompt = v));
+  el.appendChild(labeled("動画プロンプト", promptField));
 
   const row = document.createElement("div");
   row.className = "row";
@@ -974,6 +1053,50 @@ function renderVideoGenContext(el, item) {
   });
   el.appendChild(backBtn);
   el.appendChild(genStatusLine());
+}
+
+async function loadLlmModels() {
+  try {
+    const res = await api("/api/llm/models");
+    state.llm.models = res.models;
+    state.llm.loaded = res.ready ? res.loaded : null;
+  } catch {
+    state.llm.models = [];
+    state.llm.loaded = null;
+  }
+}
+
+async function generateVideoPrompt(btn, itemId, promptField) {
+  if (btn.disabled) return;
+  if (!state.llm.loaded) {
+    setGenStatus("先に LLM モデルをロードしてください", true);
+    return;
+  }
+  btn.disabled = true;
+  btn.textContent = "生成中...";
+  let text = "";
+  try {
+    await streamGenerate(
+      "/api/llm/video-prompt",
+      { item_id: itemId, extra_instruction: state.genVideo.extra },
+      (ev) => {
+        if (ev.type === "token") {
+          text += ev.content;
+          promptField.value = text;
+          state.genVideo.prompt = text;
+        } else if (ev.type === "error") {
+          setGenStatus(ev.content, true);
+        } else if (ev.type === "done_prompt") {
+          setGenStatus("動画プロンプトを生成しました");
+        }
+      }
+    );
+  } catch (e) {
+    setGenStatus(`生成エラー: ${e.message}`, true);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "✨ 動画プロンプトを生成";
+  }
 }
 
 async function runVideoGeneration(btn, itemId) {

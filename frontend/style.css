@@ -541,6 +541,32 @@ textarea.auto-grow {
   text-overflow: ellipsis;
 }
 
+/* ------------------------------------------------------------------- llm */
+
+.llm-box {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: rgba(79, 195, 247, 0.04);
+}
+
+.llm-head {
+  font-size: 12px;
+  color: var(--accent);
+}
+
+.llm-model-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+}
+
+.llm-model-row .field { flex: 1; }
+.llm-model-row button { flex: none; }
+
 /* --------------------------------------------------------------- similar */
 
 .similar-results {
