@@ -291,6 +291,30 @@ function renderGrid() {
     card.appendChild(caption);
 
     card.addEventListener("click", () => selectItem(item.id));
+    card.addEventListener("contextmenu", (e) => {
+      e.preventDefault();
+      if (state.selectedId !== item.id) selectItem(item.id);
+      showContextMenu(e.clientX, e.clientY, [
+        {
+          label: "📂 ファイルの場所を開く",
+          action: () => revealItem(item.id),
+        },
+        {
+          label: "🎞 動画を生成...",
+          action: async () => {
+            await selectItem(item.id);
+            state.videoPanel = true;
+            updateHash();
+            await renderContext();
+          },
+        },
+        {
+          label: "🗑 削除",
+          danger: true,
+          action: () => deleteItemById(item.id, item.video_count || 0),
+        },
+      ]);
+    });
     grid.appendChild(card);
   }
 }
@@ -302,6 +326,67 @@ async function selectItem(itemId) {
   renderGrid();
   await renderContext();
 }
+
+async function deleteItemById(itemId, videoCount = 0) {
+  const warn = videoCount > 0 ? `\n紐づく動画 ${videoCount} 件も削除されます。` : "";
+  if (!confirm(`この画像を削除しますか？${warn}`)) return;
+  await run(async () => {
+    await api(`/api/library/items/${itemId}`, { method: "DELETE" });
+    if (state.selectedId === itemId) state.selectedId = null;
+    await refresh();
+  }, "画像を削除しました");
+}
+
+async function revealItem(itemId) {
+  await run(
+    () => api(`/api/library/items/${itemId}/reveal`, { method: "POST" }),
+    "エクスプローラーで開きました"
+  );
+}
+
+// ---------------------------------------------------------------------------
+// 右クリックメニュー
+// ---------------------------------------------------------------------------
+
+let contextMenuEl = null;
+
+function hideContextMenu() {
+  if (contextMenuEl) {
+    contextMenuEl.remove();
+    contextMenuEl = null;
+  }
+}
+
+function showContextMenu(x, y, entries) {
+  hideContextMenu();
+  const menu = document.createElement("div");
+  menu.className = "context-menu";
+  for (const entry of entries) {
+    const item = document.createElement("button");
+    item.className = "context-menu-item" + (entry.danger ? " danger" : "");
+    item.textContent = entry.label;
+    item.addEventListener("click", () => {
+      hideContextMenu();
+      entry.action();
+    });
+    menu.appendChild(item);
+  }
+  document.body.appendChild(menu);
+  // 画面からはみ出さない位置に調整
+  const rect = menu.getBoundingClientRect();
+  menu.style.left = `${Math.min(x, window.innerWidth - rect.width - 4)}px`;
+  menu.style.top = `${Math.min(y, window.innerHeight - rect.height - 4)}px`;
+  contextMenuEl = menu;
+}
+
+document.addEventListener("click", hideContextMenu);
+document.addEventListener("contextmenu", (e) => {
+  if (!e.target.closest(".card")) hideContextMenu();
+});
+window.addEventListener("blur", hideContextMenu);
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") hideContextMenu();
+});
 
 // 検索 -----------------------------------------------------------------------
 
@@ -839,20 +924,18 @@ function renderItemContext(el, item) {
   });
   el.appendChild(genVideoBtn);
 
-  // アイテム削除
+  // ファイル操作
+  const revealBtn = document.createElement("button");
+  revealBtn.textContent = "📂 ファイルの場所を開く";
+  revealBtn.addEventListener("click", () => revealItem(item.id));
+  el.appendChild(revealBtn);
+
   const delBtn = document.createElement("button");
   delBtn.className = "danger";
-  delBtn.textContent = "画像を削除";
-  delBtn.addEventListener("click", async () => {
-    const n = (item.videos || []).length;
-    const warn = n > 0 ? `\n紐づく動画 ${n} 件も削除されます。` : "";
-    if (!confirm(`この画像を削除しますか？${warn}`)) return;
-    await run(async () => {
-      await api(`/api/library/items/${item.id}`, { method: "DELETE" });
-      state.selectedId = null;
-      await refresh();
-    }, "画像を削除しました");
-  });
+  delBtn.textContent = "🗑 画像を削除";
+  delBtn.addEventListener("click", () =>
+    deleteItemById(item.id, (item.videos || []).length)
+  );
   el.appendChild(delBtn);
 }
 

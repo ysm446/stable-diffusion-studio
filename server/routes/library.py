@@ -195,6 +195,26 @@ def delete_item(item_id: str) -> dict[str, bool]:
     return {"ok": True}
 
 
+@router.post("/items/{item_id}/reveal")
+def reveal_item(item_id: str) -> dict[str, bool]:
+    """アイテムの画像ファイルをエクスプローラーで選択表示する。"""
+    import os
+    import subprocess
+
+    d = _wrap(items.item_dir, item_id)
+    meta = _wrap(items.get_item, item_id)
+    target = d / (meta.get("image") or "image.png")
+    if not target.is_file():
+        target = d
+    if os.name != "nt":
+        raise HTTPException(status_code=400, detail="Windows のみ対応しています")
+    if target.is_dir():
+        subprocess.Popen(["explorer", str(target)])
+    else:
+        subprocess.Popen(["explorer", "/select,", str(target)])
+    return {"ok": True}
+
+
 # ---------------------------------------------------------------------------
 # 動画
 # ---------------------------------------------------------------------------
