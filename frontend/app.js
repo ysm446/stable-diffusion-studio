@@ -933,7 +933,22 @@ function renderVideoGenContext(el, item) {
   el.appendChild(img);
 
   const g = state.genVideo;
-  if (!g.prompt) g.prompt = item.prompt || "";
+  // 保存済みの動画設定があれば復元（初回のみ）。なければ画像プロンプトを既定に。
+  if (!g._loadedFor || g._loadedFor !== item.id) {
+    const vs = item.video_settings;
+    if (vs) {
+      g.prompt = vs.prompt ?? "";
+      g.extra = vs.extra_instruction ?? "";
+      g.workflow = vs.workflow ?? g.workflow;
+      g.width = vs.width ?? "";
+      g.height = vs.height ?? "";
+      g.frames = vs.frames ?? "";
+      g.seed = vs.seed ?? -1;
+    } else if (!g.prompt) {
+      g.prompt = item.prompt || "";
+    }
+    g._loadedFor = item.id;
+  }
   el.appendChild(
     labeled("ワークフロー", makeSelect(state.options.video_workflows, g.workflow, (v) => (g.workflow = v)))
   );
@@ -1044,6 +1059,18 @@ function renderVideoGenContext(el, item) {
   genBtn.addEventListener("click", () => runVideoGeneration(genBtn, item.id));
   el.appendChild(genBtn);
 
+  const saveSettingsBtn = document.createElement("button");
+  saveSettingsBtn.textContent = "💾 この設定を保存（生成せず）";
+  saveSettingsBtn.title = "追加指示・プロンプト等を画像に保存します（次回この画像を開くと復元されます）";
+  saveSettingsBtn.addEventListener("click", async () => {
+    await run(async () => {
+      await apiJson(`/api/library/items/${item.id}`, "PATCH", {
+        video_settings: currentVideoSettings(),
+      });
+    }, "動画設定を保存しました");
+  });
+  el.appendChild(saveSettingsBtn);
+
   const backBtn = document.createElement("button");
   backBtn.textContent = "← 画像詳細に戻る";
   backBtn.addEventListener("click", async () => {
@@ -1099,6 +1126,20 @@ async function generateVideoPrompt(btn, itemId, promptField) {
   }
 }
 
+// 動画パネルの現在の設定を meta.json / API 用の形にまとめる
+function currentVideoSettings() {
+  const g = state.genVideo;
+  return {
+    prompt: g.prompt,
+    extra_instruction: g.extra || "",
+    workflow: g.workflow,
+    width: g.width,
+    height: g.height,
+    frames: g.frames,
+    seed: g.seed,
+  };
+}
+
 async function runVideoGeneration(btn, itemId) {
   if (state.genBusy) return;
   state.genBusy = true;
@@ -1108,7 +1149,7 @@ async function runVideoGeneration(btn, itemId) {
   try {
     await streamGenerate(
       "/api/generation/video",
-      { item_id: itemId, ...state.genVideo },
+      { item_id: itemId, ...currentVideoSettings() },
       async (ev) => {
         if (ev.type === "status") setGenStatus(ev.content);
         else if (ev.type === "error") setGenStatus(ev.content, true);
@@ -1220,11 +1261,58 @@ function renderItemContext(el, item) {
     video.src = `/api/library/file/${item.id}/${v.file}`;
     entry.appendChild(video);
 
+    const fileLabel = document.createElement("div");
+    fileLabel.className = "palette-sub";
+    fileLabel.textContent = `${v.file}　${(v.created_at || "").replace("T", " ").slice(0, 16)}`;
+    entry.appendChild(fileLabel);
+
+    // 動画プロンプト・追加指示（編集可）
+    const vs = v.settings || {};
+    const vpInput = autoGrowTextarea(v.prompt || vs.prompt || "");
+    entry.appendChild(editableField("動画プロンプト", vpInput));
+    const veInput = autoGrowTextarea(vs.extra_instruction || "");
+    entry.appendChild(editableField("追加指示", veInput));
+
     const row = document.createElement("div");
     row.className = "video-row";
-    const info = document.createElement("span");
-    info.textContent = v.prompt || v.workflow || v.file;
-    info.title = `${v.file}\n${v.created_at || ""}`;
+
+    const saveBtn = document.createElement("button");
+    saveBtn.textContent = "💾 保存";
+    saveBtn.title = "この動画のプロンプト・追加指示を保存";
+    saveBtn.addEventListener("click", async () => {
+      const name = v.file.split("/").pop();
+      await run(async () => {
+        await apiJson(
+          `/api/library/items/${item.id}/videos/${encodeURIComponent(name)}`,
+          "PATCH",
+          {
+            prompt: vpInput.value,
+            settings: { ...vs, prompt: vpInput.value, extra_instruction: veInput.value },
+          }
+        );
+        await loadItems();
+      }, "保存しました");
+    });
+
+    const regenBtn = document.createElement("button");
+    regenBtn.className = "primary";
+    regenBtn.textContent = "✨ この設定で新規動画生成";
+    regenBtn.title = "この動画の設定を動画パネルに読み込みます（編集して生成できます）";
+    regenBtn.addEventListener("click", async () => {
+      const g = state.genVideo;
+      g.prompt = vpInput.value;
+      g.extra = veInput.value;
+      g.workflow = vs.workflow || v.workflow || g.workflow;
+      g.width = vs.width ?? "";
+      g.height = vs.height ?? "";
+      g.frames = vs.frames ?? "";
+      g.seed = vs.seed ?? -1;
+      g._loadedFor = item.id; // パネル側の自動復元を抑止
+      state.videoPanel = true;
+      updateHash();
+      await renderContext();
+    });
+
     const del = document.createElement("button");
     del.className = "danger";
     del.textContent = "削除";
@@ -1238,7 +1326,8 @@ function renderItemContext(el, item) {
         await refresh();
       }, "動画を削除しました");
     });
-    row.append(info, del);
+
+    row.append(saveBtn, regenBtn, del);
     entry.appendChild(row);
     el.appendChild(entry);
   }

@@ -401,7 +401,7 @@ textarea.auto-grow {
 
 .video-entry .video-row {
   display: flex;
-  justify-content: space-between;
+  flex-wrap: wrap;
   align-items: center;
   gap: 6px;
   color: var(--text-dim);

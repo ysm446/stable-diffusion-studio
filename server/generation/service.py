@@ -171,10 +171,25 @@ def generate_video_for_item(params: dict[str, Any], status: StatusFn) -> dict[st
             os.remove(result)
         except OSError:
             pass
-    return items.add_video(
+    # この動画を生成したときの設定を記録（各動画エントリ + アイテムの既定として）
+    settings = {
+        "prompt": prompt,
+        "extra_instruction": params.get("extra_instruction", ""),
+        "workflow": workflow,
+        "width": params.get("width", ""),
+        "height": params.get("height", ""),
+        "frames": params.get("frames", ""),
+        "seed": seed,
+    }
+    result_meta = items.add_video(
         item_id,
         video_bytes,
         ext=ext,
         prompt=prompt,
         workflow=workflow,
+        settings=settings,
     )
+    # 最後に使った設定をアイテムに保存（次回のパネル復元用）
+    items.update_item(item_id, {"video_settings": settings})
+    result_meta["video_settings"] = settings
+    return result_meta

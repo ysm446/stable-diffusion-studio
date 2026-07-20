@@ -256,6 +256,18 @@ async def add_video(
     return _wrap(items.add_video, item_id, data, ext=ext, prompt=prompt, workflow=workflow)
 
 
+class VideoUpdate(BaseModel):
+    prompt: str | None = None
+    workflow: str | None = None
+    settings: dict[str, Any] | None = None
+
+
+@router.patch("/items/{item_id}/videos/{file_name}")
+def update_video(item_id: str, file_name: str, body: VideoUpdate) -> dict[str, Any]:
+    fields = body.model_dump(exclude_unset=True)
+    return _wrap(items.update_video, item_id, file_name, fields)
+
+
 @router.delete("/items/{item_id}/videos/{file_name}")
 def remove_video(item_id: str, file_name: str) -> dict[str, Any]:
     return _wrap(items.remove_video, item_id, file_name)

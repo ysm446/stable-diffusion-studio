@@ -152,7 +152,15 @@ def import_image(folder_rel: str, image_bytes: bytes, filename: str = "") -> dic
 def update_item(item_id: str, fields: dict[str, Any]) -> dict[str, Any]:
     d = item_dir(item_id)
     meta = load_meta(d)
-    for key in ("prompt", "negative_prompt", "caption", "seed", "params", "tags"):
+    for key in (
+        "prompt",
+        "negative_prompt",
+        "caption",
+        "seed",
+        "params",
+        "tags",
+        "video_settings",
+    ):
         if key in fields:
             meta[key] = fields[key]
     save_meta(d, meta)
@@ -195,6 +203,7 @@ def add_video(
     ext: str = ".mp4",
     prompt: str = "",
     workflow: str = "",
+    settings: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     d = item_dir(item_id)
     meta = load_meta(d)
@@ -205,14 +214,43 @@ def add_video(
         n += 1
     file_rel = f"{paths.VIDEOS_DIR_NAME}/v{n:03d}{ext}"
     (d / file_rel).write_bytes(video_bytes)
-    meta.setdefault("videos", []).append(
-        {
-            "file": file_rel,
-            "prompt": prompt,
-            "workflow": workflow,
-            "created_at": now_iso(),
-        }
-    )
+    entry = {
+        "file": file_rel,
+        "prompt": prompt,
+        "workflow": workflow,
+        "created_at": now_iso(),
+    }
+    if settings:
+        entry["settings"] = settings
+    meta.setdefault("videos", []).append(entry)
+    save_meta(d, meta)
+    root = paths.get_library_root()
+    folder = d.parent.relative_to(root).as_posix()
+    folder = "" if folder == "." else folder
+    index_db.upsert_item(meta, folder)
+    meta["folder"] = folder
+    return meta
+
+
+def update_video(item_id: str, file_name: str, fields: dict[str, Any]) -> dict[str, Any]:
+    """動画エントリのプロンプト・設定を更新する。"""
+    d = item_dir(item_id)
+    meta = load_meta(d)
+    name = file_name.replace("\\", "/").split("/")[-1]
+    file_rel = f"{paths.VIDEOS_DIR_NAME}/{name}"
+    target = None
+    for v in meta.get("videos") or []:
+        if v.get("file") == file_rel:
+            target = v
+            break
+    if target is None:
+        raise NotFound(f"video not found: {file_rel}")
+    if "prompt" in fields:
+        target["prompt"] = fields["prompt"]
+    if "workflow" in fields:
+        target["workflow"] = fields["workflow"]
+    if "settings" in fields and isinstance(fields["settings"], dict):
+        target["settings"] = {**(target.get("settings") or {}), **fields["settings"]}
     save_meta(d, meta)
     root = paths.get_library_root()
     folder = d.parent.relative_to(root).as_posix()
