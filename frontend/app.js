@@ -744,7 +744,7 @@ function field(labelText, valueText) {
 }
 
 // 内容の長さに合わせて高さが伸びる（スクロールしない）テキストエリア
-function autoGrowTextarea(value) {
+function autoGrowTextarea(value, onInput) {
   const ta = document.createElement("textarea");
   ta.className = "auto-grow";
   ta.value = value ?? "";
@@ -752,7 +752,10 @@ function autoGrowTextarea(value) {
     ta.style.height = "auto";
     ta.style.height = `${ta.scrollHeight + 2}px`;
   };
-  ta.addEventListener("input", fit);
+  ta.addEventListener("input", () => {
+    fit();
+    if (onInput) onInput(ta.value);
+  });
   // DOM に載ってレイアウトが確定してから高さを合わせる
   requestAnimationFrame(fit);
   return ta;
@@ -965,7 +968,9 @@ function renderFolderContext(el) {
     }
   }
 
-  el.appendChild(labeled("Prompt", makeTextarea(g.positive, 5, (v) => (g.positive = v))));
+  el.appendChild(
+    labeled("Prompt", autoGrowTextarea(g.positive, (v) => (g.positive = v)))
+  );
 
   // ライブラリの類似プロンプト参照（旧 {library_context} 相当）
   const simBtn = document.createElement("button");
@@ -1019,7 +1024,9 @@ function renderFolderContext(el) {
   el.appendChild(simBtn);
   el.appendChild(simResults);
 
-  el.appendChild(labeled("Negative Prompt", makeTextarea(g.negative, 2, (v) => (g.negative = v))));
+  el.appendChild(
+    labeled("Negative Prompt", autoGrowTextarea(g.negative, (v) => (g.negative = v)))
+  );
 
   const row1 = document.createElement("div");
   row1.className = "row";
@@ -1136,7 +1143,7 @@ function renderVideoGenContext(el, item) {
   llmBox.appendChild(
     labeled(
       "追加指示（任意）",
-      makeTextarea(g.extra, 2, (v) => (g.extra = v))
+      autoGrowTextarea(g.extra, (v) => (g.extra = v))
     )
   );
 
@@ -1227,7 +1234,7 @@ function renderVideoGenContext(el, item) {
   el.appendChild(llmBox);
 
   // 動画プロンプト本文
-  const promptField = makeTextarea(g.prompt, 5, (v) => (g.prompt = v));
+  const promptField = autoGrowTextarea(g.prompt, (v) => (g.prompt = v));
   el.appendChild(labeled("動画プロンプト", promptField));
 
   const row = document.createElement("div");
@@ -1321,6 +1328,9 @@ async function generateVideoPrompt(btn, itemId, promptField) {
           text += ev.content;
           promptField.value = text;
           state.genVideo.prompt = text;
+          // 自動高さを反映（プログラム変更では input が飛ばないため手動で）
+          promptField.style.height = "auto";
+          promptField.style.height = `${promptField.scrollHeight + 2}px`;
         } else if (ev.type === "error") {
           setGenStatus(ev.content, true);
         } else if (ev.type === "done_prompt") {
