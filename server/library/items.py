@@ -128,13 +128,13 @@ def import_image(folder_rel: str, image_bytes: bytes, filename: str = "") -> dic
         with Image.open(io.BytesIO(image_bytes)) as im:
             info = png_meta.read_a1111_metadata(im) or png_meta.read_comfyui_metadata(im)
         if info:
-            prompt = info.get("prompt") or ""
-            negative = info.get("negative_prompt") or ""
+            prompt = info.get("positive") or ""
+            negative = info.get("negative") or ""
             seed = info.get("seed")
             params = {
                 k: v
                 for k, v in info.items()
-                if k not in ("prompt", "negative_prompt", "seed") and v is not None
+                if k not in ("positive", "negative", "seed", "size") and v is not None
             }
     except Exception:
         pass

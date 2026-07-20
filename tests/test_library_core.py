@@ -96,6 +96,27 @@ def main() -> None:
     imported = items.import_image("風景", make_png(), "photo.png")
     assert index_db.get_item_row(imported["id"]) is not None
 
+    # 取り込み（A1111 メタデータ付き PNG → プロパティが復元される）
+    from PIL.PngImagePlugin import PngInfo
+
+    pnginfo = PngInfo()
+    pnginfo.add_text(
+        "parameters",
+        "cute cat, sunshine\n"
+        "Negative prompt: blurry, lowres\n"
+        "Steps: 28, Sampler: Euler a, CFG scale: 7, Seed: 1234, Size: 64x64",
+    )
+    buf = io.BytesIO()
+    Image.new("RGB", (64, 64), (1, 2, 3)).save(buf, "PNG", pnginfo=pnginfo)
+    imported2 = items.import_image("風景", buf.getvalue(), "a1111.png")
+    assert imported2["prompt"] == "cute cat, sunshine"
+    assert imported2["negative_prompt"] == "blurry, lowres"
+    assert imported2["seed"] == 1234
+    assert imported2["params"]["steps"] == 28
+    assert imported2["params"]["sampler"] == "Euler a"
+    assert imported2["params"]["width"] == 64
+    assert index_db.search_items("sunshine")[0]["id"] == imported2["id"]
+
     # 削除
     items.delete_item(item_id)
     assert index_db.get_item_row(item_id) is None
