@@ -8,11 +8,27 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Request
 from PIL import Image
 
+from server import settings
 from server.generation import llm_client
 from server.library import items
 from server.streaming import make_sse_response
 
 router = APIRouter(prefix="/api/llm")
+
+
+def _remember_model(model: str) -> None:
+    try:
+        settings.update({"llm_model": model})
+    except Exception:
+        pass
+
+
+def _preferred_model(presets: dict) -> str:
+    """前回ロードしたモデル → 先頭のモデル、の順で既定を選ぶ。"""
+    last = str(settings.load().get("llm_model") or "").strip()
+    if last and last in presets:
+        return last
+    return next(iter(sorted(presets.keys())), "")
 
 
 @router.get("/models")
@@ -23,6 +39,7 @@ def list_models() -> dict[str, Any]:
         "models": sorted(presets.keys()),
         "loaded": status.get("model") if status.get("ready") else None,
         "ready": status.get("ready", False),
+        "last": _preferred_model(presets),
     }
 
 
@@ -36,6 +53,7 @@ async def load_model(request: Request) -> dict[str, Any]:
         msg = llm_client.load_model(model)
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+    _remember_model(model)
     return {"ok": True, "message": msg, "loaded": model}
 
 
@@ -65,6 +83,7 @@ async def video_prompt(request: Request):
     body = await request.json()
     item_id = body.get("item_id", "")
     extra = (body.get("extra_instruction") or "").strip()
+    requested_model = (body.get("model") or "").strip()
 
     try:
         meta = items.get_item(item_id)
@@ -82,10 +101,23 @@ async def video_prompt(request: Request):
     )
 
     def worker(send) -> None:
+        # 未ロードなら自動ロード（指定モデル → 前回モデル → 先頭）
         if not llm_client.is_loaded():
-            send({"type": "error", "content": "LLM モデルがロードされていません。モデルを選んでロードしてください。"})
-            send({"type": "done"})
-            return
+            presets = llm_client.refresh_model_presets()
+            target = requested_model if requested_model in presets else _preferred_model(presets)
+            if not target:
+                send({"type": "error", "content": "models/ フォルダに GGUF モデルが見つかりません。"})
+                send({"type": "done"})
+                return
+            try:
+                send({"type": "status", "content": f"LLM モデルをロード中: {target} ..."})
+                llm_client.load_model(target)
+                _remember_model(target)
+                send({"type": "model_loaded", "content": target})
+            except Exception as e:
+                send({"type": "error", "content": f"モデルのロードに失敗しました: {e}"})
+                send({"type": "done"})
+                return
         try:
             has_vision = llm_client._current_has_vision()
             messages = [

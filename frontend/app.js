@@ -979,45 +979,45 @@ function renderVideoGenContext(el, item) {
 
   const renderModelRow = () => {
     modelRow.innerHTML = "";
+    // モデル選択は常に表示（生成時に自動ロードされる）
+    const sel = makeSelect(
+      state.llm.models.length ? state.llm.models : ["（models/ に GGUF がありません）"],
+      state.llm.selected || state.llm.models[0] || "",
+      (v) => (state.llm.selected = v)
+    );
+    if (!state.llm.selected && state.llm.models[0]) state.llm.selected = state.llm.models[0];
+    modelRow.appendChild(labeled("LLM モデル", sel));
+
+    const btn = document.createElement("button");
     if (state.llm.loaded) {
-      const info = document.createElement("div");
-      info.className = "palette-sub";
-      info.textContent = `モデル: ${state.llm.loaded}`;
-      const unload = document.createElement("button");
-      unload.textContent = "アンロード";
-      unload.addEventListener("click", async () => {
+      btn.textContent = "アンロード";
+      btn.title = `ロード中: ${state.llm.loaded}`;
+      btn.addEventListener("click", async () => {
         await run(() => api("/api/llm/unload", { method: "POST" }));
         state.llm.loaded = null;
         renderModelRow();
       });
-      modelRow.append(info, unload);
     } else {
-      const sel = makeSelect(
-        state.llm.models,
-        state.llm.selected || state.llm.models[0] || "",
-        (v) => (state.llm.selected = v)
-      );
-      if (!state.llm.selected && state.llm.models[0]) state.llm.selected = state.llm.models[0];
-      const load = document.createElement("button");
-      load.textContent = "ロード";
-      load.addEventListener("click", async () => {
+      btn.textContent = "ロード";
+      btn.title = "今すぐロード（生成時に自動ロードもされます）";
+      btn.addEventListener("click", async () => {
         const model = state.llm.selected || state.llm.models[0];
-        if (!model) {
+        if (!model || !state.llm.models.length) {
           setGenStatus("models/ に GGUF モデルが見つかりません", true);
           return;
         }
-        load.disabled = true;
+        btn.disabled = true;
         setGenStatus(`モデルをロード中: ${model} ...`);
         const ok = await run(() => apiJson("/api/llm/load", "POST", { model }));
-        load.disabled = false;
+        btn.disabled = false;
         if (ok) {
           state.llm.loaded = ok.loaded;
           setGenStatus(`モデルをロードしました: ${ok.loaded}`);
           renderModelRow();
         }
       });
-      modelRow.append(labeled("LLM モデル", sel), load);
     }
+    modelRow.appendChild(btn);
   };
   renderModelRow();
   // モデル一覧・ロード状態を取得して行を更新
@@ -1087,6 +1087,8 @@ async function loadLlmModels() {
     const res = await api("/api/llm/models");
     state.llm.models = res.models;
     state.llm.loaded = res.ready ? res.loaded : null;
+    // 前回ロードしたモデルを既定選択に
+    if (!state.llm.selected && res.last) state.llm.selected = res.last;
   } catch {
     state.llm.models = [];
     state.llm.loaded = null;
@@ -1095,8 +1097,8 @@ async function loadLlmModels() {
 
 async function generateVideoPrompt(btn, itemId, promptField) {
   if (btn.disabled) return;
-  if (!state.llm.loaded) {
-    setGenStatus("先に LLM モデルをロードしてください", true);
+  if (!state.llm.models.length) {
+    setGenStatus("models/ フォルダに GGUF モデルが見つかりません", true);
     return;
   }
   btn.disabled = true;
@@ -1105,9 +1107,17 @@ async function generateVideoPrompt(btn, itemId, promptField) {
   try {
     await streamGenerate(
       "/api/llm/video-prompt",
-      { item_id: itemId, extra_instruction: state.genVideo.extra },
+      {
+        item_id: itemId,
+        extra_instruction: state.genVideo.extra,
+        model: state.llm.selected || state.llm.models[0],
+      },
       (ev) => {
-        if (ev.type === "token") {
+        if (ev.type === "status") {
+          setGenStatus(ev.content);
+        } else if (ev.type === "model_loaded") {
+          state.llm.loaded = ev.content;
+        } else if (ev.type === "token") {
           text += ev.content;
           promptField.value = text;
           state.genVideo.prompt = text;
