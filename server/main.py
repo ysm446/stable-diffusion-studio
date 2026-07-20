@@ -7,6 +7,8 @@
 from __future__ import annotations
 
 import argparse
+import os
+import threading
 from pathlib import Path
 
 import uvicorn
@@ -83,16 +85,60 @@ def configure_backends() -> None:
         forge_client.set_preferred_forge_url(sd_process.get_url())
 
 
-@app.on_event("shutdown")
-def stop_managed_backends() -> None:
-    sd_process.stop()
-    comfy_process.stop()
-    try:
-        from server.generation import llm_client
+def free_all_vram() -> list[str]:
+    """全バックエンドの VRAM を解放する。
 
-        llm_client.unload_model()
-    except Exception:
-        pass
+    管理対象プロセス（Forge / ComfyUI）は停止、外部プロセスはモデルのみ
+    アンロード。LLM・embedding の llama-server も停止する。個別に失敗しても続行。
+    """
+    results: list[str] = []
+
+    def _try(label, fn):
+        try:
+            results.append(f"{label}: {fn()}")
+        except Exception as e:
+            results.append(f"{label}: skipped ({e})")
+
+    # LLM / embedding は常にプロセス停止
+    from server.generation import embedding_client, llm_client
+
+    _try("LLM", llm_client.unload_model)
+    _try("Embedding", embedding_client.stop)
+
+    # ComfyUI: 管理対象なら停止、外部ならモデル解放
+    if comfy_process.is_enabled():
+        _try("ComfyUI", comfy_process.stop)
+    else:
+        _try("ComfyUI", comfy_client.free_vram)
+
+    # Forge: 管理対象なら停止、外部ならチェックポイント解放
+    if sd_process.is_enabled():
+        _try("Forge", sd_process.stop)
+        forge_client.reset_connection()
+    else:
+        _try("Forge", forge_client.free_vram)
+
+    return results
+
+
+@app.on_event("shutdown")
+def _on_shutdown() -> None:
+    free_all_vram()
+
+
+@app.post("/api/shutdown")
+def shutdown():
+    """アプリ終了時に呼ばれる。VRAM を解放してからサーバープロセスを終了する。"""
+    results = free_all_vram()
+    # レスポンスを返してからプロセスを終了する
+    threading.Timer(0.4, lambda: os._exit(0)).start()
+    return {"ok": True, "freed": results}
+
+
+@app.post("/api/free_vram")
+def free_vram_endpoint():
+    """サーバーは終了せず VRAM だけ解放する（手動解放用）。"""
+    return {"ok": True, "freed": free_all_vram()}
 
 
 if __name__ == "__main__":

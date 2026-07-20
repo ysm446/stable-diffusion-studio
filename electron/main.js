@@ -150,8 +150,28 @@ ipcMain.handle('select-folder', async (event, defaultPath) => {
   return result.filePaths[0];
 });
 
-app.on('window-all-closed', () => {
-  // Python サーバーにシャットダウンを通知
-  http.request({ host: '127.0.0.1', port: PORT, path: '/api/shutdown', method: 'POST' }, () => {}).end();
+let shuttingDown = false;
+
+function notifyServerShutdown() {
+  return new Promise((resolve) => {
+    const req = http.request(
+      { host: '127.0.0.1', port: PORT, path: '/api/shutdown', method: 'POST', timeout: 4000 },
+      (res) => {
+        res.on('data', () => {});
+        res.on('end', resolve);
+      }
+    );
+    req.on('error', resolve);
+    req.on('timeout', () => { req.destroy(); resolve(); });
+    req.end();
+  });
+}
+
+app.on('window-all-closed', async () => {
+  // Python サーバーに VRAM 解放＋シャットダウンを通知してから終了
+  if (!shuttingDown) {
+    shuttingDown = true;
+    await notifyServerShutdown();
+  }
   if (process.platform !== 'darwin') app.quit();
 });
