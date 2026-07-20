@@ -529,6 +529,11 @@ textarea.auto-grow {
   place-items: center;
   min-height: 0;
   background: #111;
+  cursor: pointer;
+}
+
+.seq-player-wrap:fullscreen {
+  background: #000;
 }
 
 #seq-player {

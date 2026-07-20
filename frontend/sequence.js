@@ -843,6 +843,27 @@ export function initSequenceView() {
 
   $("#btn-seq-play").addEventListener("click", () => seqState.seq && playSequence());
   $("#seq-play-toggle").addEventListener("click", togglePlay);
+
+  // プレイヤー画面：クリックで再生/一時停止、ダブルクリックで全画面
+  const player = $("#seq-player");
+  const playerWrap = $(".seq-player-wrap");
+  let clickTimer = null;
+  playerWrap.addEventListener("click", () => {
+    // シングルクリックはダブルクリック確定を少し待ってから実行
+    clearTimeout(clickTimer);
+    clickTimer = setTimeout(togglePlay, 200);
+  });
+  playerWrap.addEventListener("dblclick", () => {
+    clearTimeout(clickTimer);
+    if (document.fullscreenElement) {
+      document.exitFullscreen().catch(() => {});
+    } else {
+      (playerWrap.requestFullscreen
+        ? playerWrap.requestFullscreen()
+        : player.requestFullscreen?.()
+      )?.catch?.(() => {});
+    }
+  });
   $("#seq-seek").addEventListener("mousedown", (e) => {
     const bar = $("#seq-seek");
     const seekAt = (clientX) => {
