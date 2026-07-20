@@ -533,6 +533,34 @@ function field(labelText, valueText) {
   return div;
 }
 
+// 折りたたみ式のパラメータ表（プルダウン）
+function paramsField(labelText, params, open = false) {
+  const details = document.createElement("details");
+  details.className = "params-field";
+  details.open = open;
+  const summary = document.createElement("summary");
+  summary.textContent = `${labelText}（${Object.keys(params).length}）`;
+  details.appendChild(summary);
+
+  const table = document.createElement("div");
+  table.className = "params-table";
+  for (const [k, v] of Object.entries(params)) {
+    const row = document.createElement("div");
+    row.className = "params-row";
+    const key = document.createElement("span");
+    key.className = "params-key";
+    key.textContent = k;
+    const val = document.createElement("span");
+    val.className = "params-val";
+    val.textContent = String(v);
+    val.title = String(v);
+    row.append(key, val);
+    table.appendChild(row);
+  }
+  details.appendChild(table);
+  return details;
+}
+
 // フォーム部品ヘルパー -------------------------------------------------------
 
 function labeled(labelText, input) {
@@ -886,14 +914,7 @@ function renderItemContext(el, item) {
   if (item.seed !== null && item.seed !== undefined)
     el.appendChild(field("Seed", String(item.seed)));
   if (item.params && Object.keys(item.params).length > 0)
-    el.appendChild(
-      field(
-        "Params",
-        Object.entries(item.params)
-          .map(([k, v]) => `${k}: ${v}`)
-          .join("\n")
-      )
-    );
+    el.appendChild(paramsField("Params", item.params));
 
   // タグ・キャプション編集
   const tagsDiv = document.createElement("div");

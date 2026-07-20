@@ -261,6 +261,51 @@ body {
   overflow: auto;
 }
 
+/* 折りたたみパラメータ表 */
+.params-field {
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+}
+
+.params-field summary {
+  cursor: pointer;
+  padding: 6px 8px;
+  font-size: 11px;
+  color: var(--text-dim);
+  user-select: none;
+}
+
+.params-field summary:hover { color: var(--text); }
+
+.params-table {
+  max-height: 200px;
+  overflow: auto;
+  border-top: 1px solid var(--border);
+  padding: 4px 0;
+}
+
+.params-row {
+  display: flex;
+  gap: 8px;
+  padding: 2px 8px;
+  font-size: 12px;
+}
+
+.params-row:nth-child(odd) { background: rgba(255, 255, 255, 0.02); }
+
+.params-key {
+  flex: 0 0 40%;
+  color: var(--text-dim);
+  word-break: break-word;
+}
+
+.params-val {
+  flex: 1;
+  min-width: 0;
+  word-break: break-word;
+}
+
 .video-entry {
   border: 1px solid var(--border);
   border-radius: 6px;
