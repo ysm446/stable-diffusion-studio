@@ -537,6 +537,50 @@ textarea.auto-grow {
   background: #000;
 }
 
+/* シーケンス独自の再生バー（シークは順路全体の長さ） */
+.seq-transport {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-pane);
+}
+
+#seq-play-toggle {
+  flex: none;
+  width: 34px;
+  padding: 4px 0;
+  font-size: 13px;
+}
+
+.seq-time {
+  flex: none;
+  font-size: 11px;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+  min-width: 34px;
+  text-align: center;
+}
+
+.seq-seek {
+  flex: 1;
+  height: 8px;
+  border-radius: 4px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  cursor: pointer;
+  overflow: hidden;
+}
+
+#seq-seek-fill {
+  height: 100%;
+  width: 0;
+  background: var(--accent);
+  pointer-events: none;
+}
+
 /* ノードグラフキャンバス */
 .seq-canvas {
   position: relative;

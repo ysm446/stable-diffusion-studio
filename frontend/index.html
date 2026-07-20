@@ -89,7 +89,13 @@
           <span id="seq-status" class="gen-status"></span>
         </div>
         <div class="seq-player-wrap">
-          <video id="seq-player" controls></video>
+          <video id="seq-player"></video>
+        </div>
+        <div class="seq-transport">
+          <button type="button" id="seq-play-toggle" title="再生 / 一時停止">▶</button>
+          <span id="seq-time-cur" class="seq-time">0:00</span>
+          <div id="seq-seek" class="seq-seek"><div id="seq-seek-fill"></div></div>
+          <span id="seq-time-total" class="seq-time">0:00</span>
         </div>
         <div id="seq-canvas" class="seq-canvas">
           <div id="seq-canvas-inner" class="seq-canvas-inner">

@@ -42,6 +42,8 @@ const seqState = {
   selectedNode: null,
   playOrder: [],
   playPos: -1,
+  playHighlight: null,
+  transport: null, // { nodes, durations, offsets, total }
   busy: false,
 };
 
@@ -236,7 +238,7 @@ function renderGraph() {
     el.className = "seq-node";
     if (node.missing) el.classList.add("missing");
     if (node.id === seqState.selectedNode) el.classList.add("selected");
-    if (node.id === seqState.playOrder[seqState.playPos]) el.classList.add("playing");
+    if (seqState.playPos >= 0 && node.id === seqState.playHighlight) el.classList.add("playing");
     el.style.left = `${node.x}px`;
     el.style.top = `${node.y}px`;
     el.dataset.id = node.id;
@@ -532,62 +534,174 @@ function startConnect(srcId, kind, e) {
 }
 
 // ---------------------------------------------------------------------------
-// 連続再生
+// 連続再生（独自プレイヤー：シークバーは順路全体の長さ）
 // ---------------------------------------------------------------------------
+
+const durationCache = new Map(); // clipUrl -> 秒
+
+function fmtTime(sec) {
+  if (!Number.isFinite(sec) || sec < 0) sec = 0;
+  const m = Math.floor(sec / 60);
+  const s = Math.floor(sec % 60);
+  return `${m}:${String(s).padStart(2, "0")}`;
+}
+
+// order（ノード id 列）の各クリップの尺を取得し、[durations, offsets, total] を返す
+async function measureOrder(order) {
+  const nodes = order
+    .map((id) => seqState.seq.nodes.find((n) => n.id === id))
+    .filter((n) => n && !n.missing);
+  const durations = await Promise.all(nodes.map((n) => clipDuration(clipUrl(n))));
+  const offsets = [];
+  let acc = 0;
+  for (const d of durations) {
+    offsets.push(acc);
+    acc += d;
+  }
+  return { nodes, durations, offsets, total: acc };
+}
+
+function clipDuration(url) {
+  if (durationCache.has(url)) return Promise.resolve(durationCache.get(url));
+  return new Promise((resolve) => {
+    const v = document.createElement("video");
+    v.preload = "metadata";
+    v.src = url;
+    v.addEventListener("loadedmetadata", () => {
+      const d = Number.isFinite(v.duration) ? v.duration : 0;
+      durationCache.set(url, d);
+      resolve(d);
+    });
+    v.addEventListener("error", () => {
+      durationCache.set(url, 0);
+      resolve(0);
+    });
+  });
+}
 
 function stopPlayback() {
   seqState.playPos = -1;
   seqState.playOrder = [];
+  seqState.transport = null;
   const player = $("#seq-player");
   if (player) {
     player.pause();
     player.onended = null;
+    player.ontimeupdate = null;
   }
+  updateTransportUI(0, 0);
+  setPlayToggle(false);
 }
 
-function playSequence() {
+function setPlayToggle(playing) {
+  const btn = $("#seq-play-toggle");
+  if (btn) btn.textContent = playing ? "⏸" : "▶";
+}
+
+function updateTransportUI(cur, total) {
+  const fill = $("#seq-seek-fill");
+  if (fill) fill.style.width = total > 0 ? `${(cur / total) * 100}%` : "0%";
+  const c = $("#seq-time-cur");
+  const t = $("#seq-time-total");
+  if (c) c.textContent = fmtTime(cur);
+  if (t) t.textContent = fmtTime(total);
+}
+
+async function playSequence() {
   const order = nodeOrder(seqState.seq.nodes, seqState.seq.edges);
   if (!order.length) {
     setSeqStatus("順路がありません。ノードを線でつないでください", true);
     return;
   }
   seqState.playOrder = order;
+  const t = await measureOrder(order);
+  if (!t.nodes.length) {
+    setSeqStatus("再生できるクリップがありません", true);
+    return;
+  }
+  seqState.transport = t;
   playAt(0);
 }
 
-function playFrom(nodeId) {
+async function playFrom(nodeId) {
   const order = nodeOrder(seqState.seq.nodes, seqState.seq.edges);
   const idx = order.indexOf(nodeId);
   if (idx >= 0) {
     seqState.playOrder = order;
-    playAt(idx);
+    seqState.transport = await measureOrder(order);
+    const node = seqState.seq.nodes.find((n) => n.id === nodeId);
+    playAt(seqState.transport.nodes.indexOf(node));
   } else {
     // 順路外 → 単体再生
     seqState.playOrder = [nodeId];
+    seqState.transport = await measureOrder([nodeId]);
     playAt(0);
   }
 }
 
-function playAt(pos) {
-  const order = seqState.playOrder;
-  if (pos < 0 || pos >= order.length) {
+function playAt(pos, seekInClip = 0) {
+  const t = seqState.transport;
+  if (!t || pos < 0 || pos >= t.nodes.length) {
     stopPlayback();
     renderGraph();
     return;
   }
-  const node = seqState.seq.nodes.find((n) => n.id === order[pos]);
-  if (!node || node.missing) {
-    playAt(pos + 1);
-    return;
-  }
+  const node = t.nodes[pos];
   seqState.playPos = pos;
+  // ノードグラフの再生中ハイライトは元の order 上の位置で
+  seqState.playHighlight = node.id;
   renderGraph();
+
   const player = $("#seq-player");
-  player.src = clipUrl(node);
+  const url = clipUrl(node);
+  const startPlayback = () => {
+    if (seekInClip > 0) {
+      try {
+        player.currentTime = seekInClip;
+      } catch {}
+    }
+    player.play().catch(() => {});
+    setPlayToggle(true);
+  };
+  if (player.src !== new URL(url, location.href).href) {
+    player.src = url;
+    player.onloadedmetadata = startPlayback;
+  } else {
+    startPlayback();
+  }
+  player.ontimeupdate = () => {
+    const cur = t.offsets[pos] + (player.currentTime || 0);
+    updateTransportUI(cur, t.total);
+  };
   player.onended = () => {
     if (seqState.playPos === pos) playAt(pos + 1);
   };
-  player.play().catch(() => {});
+}
+
+// シークバーのクリック → 全体尺に対する位置へジャンプ
+function seekTo(fraction) {
+  const t = seqState.transport;
+  if (!t || t.total <= 0) return;
+  const target = Math.max(0, Math.min(t.total, fraction * t.total));
+  let pos = 0;
+  while (pos < t.nodes.length - 1 && t.offsets[pos + 1] <= target) pos++;
+  playAt(pos, target - t.offsets[pos]);
+}
+
+function togglePlay() {
+  const player = $("#seq-player");
+  if (!seqState.transport) {
+    // 未再生 → 連続再生を開始
+    if (seqState.seq) playSequence();
+    return;
+  }
+  if (player.paused) {
+    player.play().catch(() => {});
+    setPlayToggle(true);
+  } else {
+    player.pause();
+    setPlayToggle(false);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -728,6 +842,22 @@ export function initSequenceView() {
   });
 
   $("#btn-seq-play").addEventListener("click", () => seqState.seq && playSequence());
+  $("#seq-play-toggle").addEventListener("click", togglePlay);
+  $("#seq-seek").addEventListener("mousedown", (e) => {
+    const bar = $("#seq-seek");
+    const seekAt = (clientX) => {
+      const rect = bar.getBoundingClientRect();
+      seekTo((clientX - rect.left) / rect.width);
+    };
+    seekAt(e.clientX);
+    const onMove = (ev) => seekAt(ev.clientX);
+    const onUp = () => {
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+    };
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  });
   $("#btn-seq-fit").addEventListener("click", fitView);
   $("#btn-seq-export").addEventListener("click", exportSequence);
 
