@@ -261,6 +261,15 @@ body {
   overflow: auto;
 }
 
+/* 内容の長さに合わせて伸びるテキストエリア（スクロールしない） */
+textarea.auto-grow {
+  width: 100%;
+  resize: none;
+  overflow: hidden;
+  min-height: 2.4em;
+  line-height: 1.4;
+}
+
 /* 折りたたみパラメータ表 */
 .params-field {
   border: 1px solid var(--border);
@@ -304,6 +313,13 @@ body {
   flex: 1;
   min-width: 0;
   word-break: break-word;
+}
+
+.params-val-input {
+  flex: 1;
+  min-width: 0;
+  padding: 1px 4px;
+  font-size: 12px;
 }
 
 .video-entry {

@@ -575,7 +575,78 @@ function field(labelText, valueText) {
   return div;
 }
 
-// 折りたたみ式のパラメータ表（プルダウン）
+// 内容の長さに合わせて高さが伸びる（スクロールしない）テキストエリア
+function autoGrowTextarea(value) {
+  const ta = document.createElement("textarea");
+  ta.className = "auto-grow";
+  ta.value = value ?? "";
+  const fit = () => {
+    ta.style.height = "auto";
+    ta.style.height = `${ta.scrollHeight + 2}px`;
+  };
+  ta.addEventListener("input", fit);
+  // DOM に載ってレイアウトが確定してから高さを合わせる
+  requestAnimationFrame(fit);
+  return ta;
+}
+
+// 編集可能なラベル付きフィールド
+function editableField(labelText, input) {
+  const div = document.createElement("div");
+  div.className = "field";
+  const label = document.createElement("label");
+  label.textContent = labelText;
+  input.style.width = "100%";
+  div.append(label, input);
+  return div;
+}
+
+// 編集可能なパラメータ表（プルダウン）。getValues() で編集後の値を返す。
+function editableParamsField(labelText, params, open = false) {
+  const details = document.createElement("details");
+  details.className = "params-field";
+  details.open = open;
+  const summary = document.createElement("summary");
+  summary.textContent = `${labelText}（${Object.keys(params).length}）`;
+  details.appendChild(summary);
+
+  const table = document.createElement("div");
+  table.className = "params-table";
+  const inputs = {};
+  for (const [k, v] of Object.entries(params)) {
+    const row = document.createElement("div");
+    row.className = "params-row";
+    const key = document.createElement("span");
+    key.className = "params-key";
+    key.textContent = k;
+    const inp = document.createElement("input");
+    inp.type = "text";
+    inp.className = "params-val-input";
+    inp.value = String(v);
+    inputs[k] = { input: inp, original: v };
+    row.append(key, inp);
+    table.appendChild(row);
+  }
+  details.appendChild(table);
+
+  details.getValues = () => {
+    const out = {};
+    for (const [k, { input, original }] of Object.entries(inputs)) {
+      const raw = input.value;
+      // 元が数値なら数値として保存を試みる
+      if (typeof original === "number") {
+        const n = Number(raw);
+        out[k] = Number.isFinite(n) ? n : raw;
+      } else {
+        out[k] = raw;
+      }
+    }
+    return out;
+  };
+  return details;
+}
+
+// 折りたたみ式のパラメータ表（プルダウン・読み取り専用）
 function paramsField(labelText, params, open = false) {
   const details = document.createElement("details");
   details.className = "params-field";
@@ -951,12 +1022,58 @@ function renderItemContext(el, item) {
   );
   el.appendChild(img);
 
-  if (item.prompt) el.appendChild(field("Prompt", item.prompt));
-  if (item.negative_prompt) el.appendChild(field("Negative Prompt", item.negative_prompt));
-  if (item.seed !== null && item.seed !== undefined)
-    el.appendChild(field("Seed", String(item.seed)));
-  if (item.params && Object.keys(item.params).length > 0)
-    el.appendChild(paramsField("Params", item.params));
+  // プロンプト・パラメータ（編集可能）
+  const promptInput = autoGrowTextarea(item.prompt || "");
+  el.appendChild(editableField("Prompt", promptInput));
+
+  const negInput = autoGrowTextarea(item.negative_prompt || "");
+  el.appendChild(editableField("Negative Prompt", negInput));
+
+  const seedInput = document.createElement("input");
+  seedInput.type = "text";
+  seedInput.value =
+    item.seed !== null && item.seed !== undefined ? String(item.seed) : "";
+  el.appendChild(editableField("Seed", seedInput));
+
+  const paramsEditor =
+    item.params && Object.keys(item.params).length > 0
+      ? editableParamsField("Params", item.params)
+      : null;
+  if (paramsEditor) el.appendChild(paramsEditor);
+
+  // タグ・キャプション
+  const tagsInput = document.createElement("input");
+  tagsInput.type = "text";
+  tagsInput.value = (item.tags || []).join(", ");
+  el.appendChild(editableField("タグ（カンマ区切り）", tagsInput));
+
+  const capInput = document.createElement("textarea");
+  capInput.rows = 2;
+  capInput.value = item.caption || "";
+  el.appendChild(editableField("キャプション", capInput));
+
+  const saveBtn = document.createElement("button");
+  saveBtn.textContent = "💾 プロパティを保存";
+  saveBtn.addEventListener("click", async () => {
+    const seedRaw = seedInput.value.trim();
+    const seedNum = seedRaw === "" ? null : Number(seedRaw);
+    const patch = {
+      prompt: promptInput.value,
+      negative_prompt: negInput.value,
+      seed: Number.isFinite(seedNum) ? seedNum : null,
+      tags: tagsInput.value
+        .split(",")
+        .map((t) => t.trim())
+        .filter(Boolean),
+      caption: capInput.value,
+    };
+    if (paramsEditor) patch.params = paramsEditor.getValues();
+    await run(async () => {
+      await apiJson(`/api/library/items/${item.id}`, "PATCH", patch);
+      await loadItems();
+    }, "保存しました");
+  });
+  el.appendChild(saveBtn);
 
   // この画像のプロンプト・パラメータを生成パネルに読み込む
   const useBtn = document.createElement("button");
@@ -965,43 +1082,6 @@ function renderItemContext(el, item) {
   useBtn.title = "プロンプト・パラメータを生成パネルに読み込み、編集して生成できます";
   useBtn.addEventListener("click", () => useItemForGeneration(item));
   el.appendChild(useBtn);
-
-  // タグ・キャプション編集
-  const tagsDiv = document.createElement("div");
-  tagsDiv.className = "field";
-  tagsDiv.innerHTML = '<label>タグ（カンマ区切り）</label>';
-  const tagsInput = document.createElement("input");
-  tagsInput.type = "text";
-  tagsInput.style.width = "100%";
-  tagsInput.value = (item.tags || []).join(", ");
-  tagsDiv.appendChild(tagsInput);
-  el.appendChild(tagsDiv);
-
-  const capDiv = document.createElement("div");
-  capDiv.className = "field";
-  capDiv.innerHTML = "<label>キャプション</label>";
-  const capInput = document.createElement("textarea");
-  capInput.rows = 2;
-  capInput.style.width = "100%";
-  capInput.value = item.caption || "";
-  capDiv.appendChild(capInput);
-  el.appendChild(capDiv);
-
-  const saveBtn = document.createElement("button");
-  saveBtn.textContent = "タグ・キャプションを保存";
-  saveBtn.addEventListener("click", async () => {
-    await run(async () => {
-      await apiJson(`/api/library/items/${item.id}`, "PATCH", {
-        tags: tagsInput.value
-          .split(",")
-          .map((t) => t.trim())
-          .filter(Boolean),
-        caption: capInput.value,
-      });
-      await loadItems();
-    }, "保存しました");
-  });
-  el.appendChild(saveBtn);
 
   // 動画一覧
   const vh = document.createElement("h2");

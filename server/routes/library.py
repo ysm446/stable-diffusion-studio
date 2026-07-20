@@ -201,7 +201,8 @@ async def import_image(folder: str = Form(""), file: UploadFile | None = None) -
 
 @router.patch("/items/{item_id}")
 def update_item(item_id: str, body: ItemUpdate) -> dict[str, Any]:
-    fields = {k: v for k, v in body.model_dump().items() if v is not None}
+    # リクエストで明示的に指定されたフィールドのみ更新（seed=null でクリア可）
+    fields = body.model_dump(exclude_unset=True)
     return _wrap(items.update_item, item_id, fields)
 
 
