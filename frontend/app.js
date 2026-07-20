@@ -1149,6 +1149,35 @@ function renderItemContext(el, item) {
 // その他
 // ---------------------------------------------------------------------------
 
+// バックエンドの起動状態インジケーター ----------------------------------------
+
+let statusPollTimer = null;
+
+async function refreshServiceStatus() {
+  const container = $("#service-status");
+  try {
+    const res = await api("/api/status");
+    container.innerHTML = "";
+    for (const s of res.services) {
+      const chip = document.createElement("span");
+      chip.className = `svc-chip ${s.ready ? "is-up" : "is-down"}`;
+      chip.innerHTML = `<span class="svc-dot"></span>${s.label}`;
+      chip.title = `${s.label}: ${s.ready ? "起動中" : "停止"} (${s.url})`;
+      container.appendChild(chip);
+    }
+  } catch {
+    container.innerHTML = '<span class="svc-chip is-down">状態不明</span>';
+  }
+}
+
+function startStatusPolling() {
+  refreshServiceStatus();
+  clearInterval(statusPollTimer);
+  statusPollTimer = setInterval(refreshServiceStatus, 8000);
+  // クリックで即再確認
+  $("#service-status").addEventListener("click", refreshServiceStatus);
+}
+
 // ペインのリサイズ ----------------------------------------------------------
 
 const PANE_LIMITS = { left: [150, 500], right: [260, 720] };
@@ -1316,6 +1345,7 @@ run(async () => {
   if (saved.gen_image) Object.assign(state.genImage, saved.gen_image);
   if (saved.gen_video) Object.assign(state.genVideo, saved.gen_video);
   initPaneResizers(saved.pane_widths);
+  startStatusPolling();
   const p = new URLSearchParams(location.hash.slice(1));
   const itemId = p.get("item");
   const videoPanel = p.get("video") === "1";
