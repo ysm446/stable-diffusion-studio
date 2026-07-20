@@ -1149,6 +1149,65 @@ function renderItemContext(el, item) {
 // その他
 // ---------------------------------------------------------------------------
 
+// ペインのリサイズ ----------------------------------------------------------
+
+const PANE_LIMITS = { left: [150, 500], right: [260, 720] };
+
+function applyPaneWidths(widths) {
+  const panes = $("#view-library");
+  if (widths.left) panes.style.setProperty("--left-w", `${widths.left}px`);
+  if (widths.right) panes.style.setProperty("--right-w", `${widths.right}px`);
+}
+
+let paneSaveTimer = null;
+function savePaneWidths(widths) {
+  clearTimeout(paneSaveTimer);
+  paneSaveTimer = setTimeout(() => {
+    apiJson("/api/settings", "PUT", { pane_widths: widths }).catch(() => {});
+  }, 400);
+}
+
+function initPaneResizers(saved) {
+  const widths = { left: 240, right: 420, ...(saved || {}) };
+  applyPaneWidths(widths);
+
+  for (const resizer of document.querySelectorAll(".pane-resizer")) {
+    const side = resizer.dataset.resize;
+    resizer.addEventListener("mousedown", (e) => {
+      e.preventDefault();
+      resizer.classList.add("is-dragging");
+      const startX = e.clientX;
+      const startW = widths[side];
+      const [min, max] = PANE_LIMITS[side];
+      // 右ペインは左方向ドラッグで広がるので符号を反転
+      const dir = side === "left" ? 1 : -1;
+
+      const onMove = (ev) => {
+        const next = Math.max(min, Math.min(max, startW + dir * (ev.clientX - startX)));
+        widths[side] = Math.round(next);
+        applyPaneWidths(widths);
+      };
+      const onUp = () => {
+        document.removeEventListener("mousemove", onMove);
+        document.removeEventListener("mouseup", onUp);
+        resizer.classList.remove("is-dragging");
+        document.body.style.userSelect = "";
+        savePaneWidths(widths);
+      };
+      document.body.style.userSelect = "none";
+      document.addEventListener("mousemove", onMove);
+      document.addEventListener("mouseup", onUp);
+    });
+
+    // ダブルクリックで既定幅に戻す
+    resizer.addEventListener("dblclick", () => {
+      widths[side] = side === "left" ? 240 : 420;
+      applyPaneWidths(widths);
+      savePaneWidths(widths);
+    });
+  }
+}
+
 // ライブラリルートの表示・変更 ----------------------------------------------
 
 async function loadRoot() {
@@ -1256,6 +1315,7 @@ run(async () => {
   if (options) state.options = options;
   if (saved.gen_image) Object.assign(state.genImage, saved.gen_image);
   if (saved.gen_video) Object.assign(state.genVideo, saved.gen_video);
+  initPaneResizers(saved.pane_widths);
   const p = new URLSearchParams(location.hash.slice(1));
   const itemId = p.get("item");
   const videoPanel = p.get("video") === "1";

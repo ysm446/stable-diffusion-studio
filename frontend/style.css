@@ -63,11 +63,24 @@ body {
 .panes {
   flex: 1;
   display: grid;
-  grid-template-columns: 240px 1fr 340px;
+  grid-template-columns: var(--left-w, 240px) 1fr var(--right-w, 420px);
   min-height: 0;
 }
 
+#view-library {
+  grid-template-columns: var(--left-w, 240px) 6px 1fr 6px var(--right-w, 420px);
+}
+
 .panes[hidden] { display: none; }
+
+.pane-resizer {
+  background: var(--border);
+  cursor: col-resize;
+  transition: background 0.15s;
+}
+
+.pane-resizer:hover,
+.pane-resizer.is-dragging { background: var(--accent); }
 
 .pane {
   display: flex;
