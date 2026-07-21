@@ -44,6 +44,7 @@ const state = {
     seed: -1,
     extra: "",
     sections: ["scene", "action", "camera", "style", "prompt"],
+    unload_llm: true, // 動画生成前に LLM をアンロードして VRAM を空ける
   },
   rootInfo: null, // /api/library/root の結果
   llm: { models: [], loaded: null, selected: "" },
@@ -1577,7 +1578,8 @@ function enqueueVideoJob(itemId, params, label) {
     id: ++queueSeq,
     type: "video",
     itemId,
-    params: { ...params },
+    // LLM アンロードは共通設定（state.genVideo）から常に反映する
+    params: { ...params, unload_llm: state.genVideo.unload_llm !== false },
     status: "pending",
     label: `動画: ${label || itemId}`,
     message: "",
@@ -1777,6 +1779,22 @@ function renderVideoGenContext(el, item) {
 
   el.appendChild(labeled("Frames（空でWF値）", makeInput("number", g.frames, (v) => (g.frames = v))));
   el.appendChild(seedField("Seed", g, () => state.lastVideoSeed));
+
+  // 生成前に LLM をアンロードして VRAM を空ける（既定オン）
+  const unloadLbl = document.createElement("label");
+  unloadLbl.className = "section-check unload-llm-check";
+  const unloadCb = document.createElement("input");
+  unloadCb.type = "checkbox";
+  unloadCb.checked = g.unload_llm !== false;
+  unloadCb.addEventListener("change", () => {
+    g.unload_llm = unloadCb.checked;
+    saveGenSettings();
+  });
+  unloadLbl.append(
+    unloadCb,
+    document.createTextNode(" 生成前に LLM をアンロード（VRAM を空ける）")
+  );
+  el.appendChild(unloadLbl);
 
   const genBtn = document.createElement("button");
   genBtn.className = "primary";

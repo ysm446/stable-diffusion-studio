@@ -149,6 +149,16 @@ def generate_video_for_item(params: dict[str, Any], status: StatusFn) -> dict[st
     meta = items.get_item(item_id)
     image = Image.open(d / meta["image"]).copy()
 
+    # 動画生成は VRAM を大きく使うため、生成前に LLM をアンロードする（既定オン）
+    if params.get("unload_llm", True):
+        from server.generation import llm_client
+
+        try:
+            status("LLM をアンロード中...")
+            status(llm_client.unload_model())
+        except Exception:
+            pass  # アンロード失敗（未起動等）でも生成は続行する
+
     if comfy_process.is_enabled():
         status("ComfyUI の起動を確認中...")
         comfy_process.wait_until_ready()

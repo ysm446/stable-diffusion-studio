@@ -1,7 +1,7 @@
 # Progress
 
 作成日時: 2026-05-19 23:05
-更新日時: 2026-07-22 03:25
+更新日時: 2026-07-22 03:45
 
 このファイルは、完了した作業、確認したこと、残っている注意点を共有するための進捗管理ドキュメントです。
 
@@ -110,6 +110,10 @@ Image Assistant は、初期の Gradio / A1111 想定から、Electron UI + Fast
   handleVideoClick で videoPanel を解除するよう修正。
 - グリッド内並べ替えを複数選択ドラッグに対応（internalDragId → internalDragIds、
   reorderItems は選択群をグリッド順のままドロップ位置へ挿入）。フォルダへの複数ドロップ移動は従来通り。
+- 動画生成前の LLM アンロード（旧 unload_llm_before_video 相当）を移植。
+  `state.genVideo.unload_llm`（既定 true、gen_video として保存）→ enqueueVideoJob で常に params に付与 →
+  サーバー `generate_video_for_item` が `params.get("unload_llm", True)` で llama-server を停止。
+  チェックボックスは動画生成パネルの Seed と生成ボタンの間。動画プロパティからの再生成にも共通設定が効く。
 - 検証: `node --check`、`parse_entries` のスモークテスト、テスト用サーバー（ポート 8799）＋ヘッドレス Chrome のスクリーンショットで UI を確認。候補メニューはヘッドレスのスクリーンショットでのみ描画されない現象があったが、DOM・ヒットテスト・clone 描画・キー操作での挿入はすべて正常で、ヘッドレス固有のコンポジット問題と判断（実機は Ctrl+R 後に要確認）。
 
 ## 確認済みの補足

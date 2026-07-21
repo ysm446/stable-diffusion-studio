@@ -1137,6 +1137,9 @@ textarea.auto-grow {
 
 .section-check input { accent-color: var(--accent); cursor: pointer; }
 
+/* 動画生成前の LLM アンロードチェック（生成ボタンの上） */
+.unload-llm-check { margin: 2px 0; color: var(--text-dim); }
+
 /* --------------------------------------------------------------- similar */
 
 .similar-results {
