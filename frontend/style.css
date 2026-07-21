@@ -310,11 +310,14 @@ body {
 /* ------------------------------------------------------------------ grid */
 
 .grid {
+  --card-w: 160px;
   flex: 1;
   overflow: auto;
   padding: 10px;
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  grid-template-columns: repeat(auto-fill, var(--card-w));
+  /* auto だと行がエリアの高さに合わせて潰されてスクロールが出ない（カードが縮む原因） */
+  grid-auto-rows: max-content;
   gap: 10px;
   align-content: start;
   outline: none;
@@ -427,7 +430,7 @@ body {
   display: block;
   width: 100%;
   aspect-ratio: 1;
-  object-fit: cover;
+  object-fit: contain;
   background: #111;
 }
 
