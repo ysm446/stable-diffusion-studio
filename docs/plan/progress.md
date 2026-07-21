@@ -1,7 +1,7 @@
 # Progress
 
 作成日時: 2026-05-19 23:05
-更新日時: 2026-07-22 03:45
+更新日時: 2026-07-22 04:00
 
 このファイルは、完了した作業、確認したこと、残っている注意点を共有するための進捗管理ドキュメントです。
 
@@ -103,6 +103,8 @@ Image Assistant は、初期の Gradio / A1111 想定から、Electron UI + Fast
   詳細パネルの「🖼 新規生成でキューに追加」で near_item を渡す。通常のフォルダ生成は従来通り先頭。
 - 生成完了時にアイテム ID を localStorage（`studio_new_item_ids`、直近 300 件）へ記録し、
   カードに NEW バッジ（accent 色・点滅）を表示。クリック（handleCardClick / selectItem）で解除。
+- 動画にも同様の NEW バッジを追加。キーは「アイテムID/videos/vNNN.mp4」で
+  `studio_new_video_ids` に保持し、動画ストリップのカードに表示、handleVideoClick で解除。
 - 検証: `tests/test_generation_service.py` に near_item の配置と参照元欠落時のフォールバックを追加し、
   `test_library_core.py` と合わせて通過。UI は実機での確認が必要（サーバー変更のため要再起動）。
 - バグ修正: 動画生成パネル表示中（videoPanel=true）は renderContext が selectedVideoFile より

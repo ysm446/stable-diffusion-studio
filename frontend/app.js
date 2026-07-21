@@ -387,28 +387,51 @@ async function loadItems() {
   renderGrid();
 }
 
-// 新規生成されてまだクリックされていないアイテム ID（NEW バッジ表示用）。
-// リロード・再起動後も保持し、カードをクリックしたら解除する。
+// 新規生成されてまだクリックされていないもの（NEW バッジ表示用）。
+// 画像はアイテム ID、動画は「アイテムID/videos/vNNN.mp4」をキーに、
+// リロード・再起動後も保持し、クリックしたら解除する。
 const NEW_ITEMS_KEY = "studio_new_item_ids";
-let newItemIds;
-try {
-  newItemIds = new Set(JSON.parse(localStorage.getItem(NEW_ITEMS_KEY) || "[]"));
-} catch {
-  newItemIds = new Set();
+const NEW_VIDEOS_KEY = "studio_new_video_ids";
+
+function loadNewSet(key) {
+  try {
+    return new Set(JSON.parse(localStorage.getItem(key) || "[]"));
+  } catch {
+    return new Set();
+  }
 }
 
-function persistNewItems() {
+function persistNewSet(key, set) {
   // 増えすぎないよう直近 300 件だけ保持
-  localStorage.setItem(NEW_ITEMS_KEY, JSON.stringify([...newItemIds].slice(-300)));
+  localStorage.setItem(key, JSON.stringify([...set].slice(-300)));
 }
+
+const newItemIds = loadNewSet(NEW_ITEMS_KEY);
+const newVideoIds = loadNewSet(NEW_VIDEOS_KEY);
 
 function markItemNew(id) {
   newItemIds.add(id);
-  persistNewItems();
+  persistNewSet(NEW_ITEMS_KEY, newItemIds);
 }
 
 function markItemSeen(id) {
-  if (newItemIds.delete(id)) persistNewItems();
+  if (newItemIds.delete(id)) persistNewSet(NEW_ITEMS_KEY, newItemIds);
+}
+
+function markVideoNew(itemId, file) {
+  newVideoIds.add(`${itemId}/${file}`);
+  persistNewSet(NEW_VIDEOS_KEY, newVideoIds);
+}
+
+function markVideoSeen(itemId, file) {
+  if (newVideoIds.delete(`${itemId}/${file}`)) persistNewSet(NEW_VIDEOS_KEY, newVideoIds);
+}
+
+function makeNewBadge() {
+  const nb = document.createElement("span");
+  nb.className = "new-badge";
+  nb.textContent = "NEW";
+  return nb;
 }
 
 function renderGrid() {
@@ -494,10 +517,7 @@ function renderGrid() {
 
     if (newItemIds.has(item.id)) {
       card.classList.add("is-new");
-      const nb = document.createElement("span");
-      nb.className = "new-badge";
-      nb.textContent = "NEW";
-      card.appendChild(nb);
+      card.appendChild(makeNewBadge());
     }
 
     const caption = document.createElement("div");
@@ -663,6 +683,10 @@ function renderVideoStrip() {
     label.textContent = v.prompt || v.file.split("/").pop();
     label.title = v.file;
     card.appendChild(label);
+    if (newVideoIds.has(`${item.id}/${v.file}`)) {
+      card.classList.add("is-new");
+      card.appendChild(makeNewBadge());
+    }
     card.addEventListener("click", (e) => handleVideoClick(v.file, index, e));
     list.appendChild(card);
   });
@@ -670,6 +694,7 @@ function renderVideoStrip() {
 
 // 動画ストリップのクリック（修飾キーで複数選択）
 async function handleVideoClick(file, index, e) {
+  markVideoSeen(state.currentItem?.id ?? state.selectedId, file); // クリックで NEW 解除
   // 動画生成パネル表示中でも、動画をクリックしたらそのプロパティ表示へ切り替える
   // （renderContext では videoPanel が selectedVideoFile より優先されるため）
   if (state.videoPanel) {
@@ -1661,6 +1686,10 @@ async function runVideoJob(job) {
   });
   if (err) throw new Error(err);
   job.message = status;
+  // 追加された動画（videos の末尾）に NEW を付ける
+  if (result?.videos?.length) {
+    markVideoNew(job.itemId, result.videos[result.videos.length - 1].file);
+  }
   // ランダム指定（-1）でも、サーバーが記録した実際の seed を復元用に控える
   const usedSeed = result?.video_settings?.seed;
   if (typeof usedSeed === "number" && usedSeed >= 0) {

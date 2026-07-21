@@ -355,6 +355,7 @@ body {
 
 .vstrip-card {
   flex: 0 0 auto;
+  position: relative; /* NEW バッジの基準 */
   width: 200px;
   border: 1px solid var(--border);
   border-radius: 6px;
@@ -454,10 +455,12 @@ body {
   text-overflow: ellipsis;
 }
 
-/* 新規生成されてまだクリックされていないカードの NEW 表示 */
-.card.is-new { border-color: var(--accent); }
+/* 新規生成されてまだクリックされていないカードの NEW 表示（画像 / 動画共通） */
+.card.is-new,
+.vstrip-card.is-new { border-color: var(--accent); }
 
-.card .new-badge {
+.card .new-badge,
+.vstrip-card .new-badge {
   position: absolute;
   top: 4px;
   left: 4px;
