@@ -4,6 +4,7 @@
  */
 
 import { initSequenceView, activateSequenceView } from "/frontend/sequence.js";
+import { initSnippetsView, activateSnippetsView } from "/frontend/snippets.js";
 import { showInputDialog } from "/frontend/dialog.js";
 
 const state = {
@@ -723,6 +724,103 @@ async function useItemForGeneration(item) {
 // 右クリックメニュー
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// スニペット挿入ピッカー
+// ---------------------------------------------------------------------------
+
+let snippetCache = null;
+
+async function loadSnippets(force = false) {
+  if (snippetCache && !force) return snippetCache;
+  try {
+    snippetCache = (await api("/api/snippets")).snippets;
+  } catch {
+    snippetCache = [];
+  }
+  return snippetCache;
+}
+
+async function openSnippetPicker(onPick) {
+  const snippets = await loadSnippets();
+  const overlay = document.createElement("div");
+  overlay.className = "dialog-overlay";
+  const box = document.createElement("div");
+  box.className = "dialog-box snippet-picker";
+
+  const title = document.createElement("div");
+  title.className = "dialog-title";
+  title.textContent = `スニペットを挿入（${snippets.length}）`;
+  const search = document.createElement("input");
+  search.type = "text";
+  search.placeholder = "検索（prefix / 名前 / 説明 / 本文）";
+  const list = document.createElement("div");
+  list.className = "snippet-list";
+  const cancel = document.createElement("button");
+  cancel.textContent = "閉じる";
+
+  box.append(title, search, list, cancel);
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+
+  const close = () => overlay.remove();
+  cancel.addEventListener("click", close);
+  overlay.addEventListener("mousedown", (e) => {
+    if (e.target === overlay) close();
+  });
+  search.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") close();
+  });
+
+  const render = () => {
+    const q = search.value.trim().toLowerCase();
+    const hits = (
+      q
+        ? snippets.filter(
+            (s) =>
+              s.prefix.toLowerCase().includes(q) ||
+              s.name.toLowerCase().includes(q) ||
+              s.description.toLowerCase().includes(q) ||
+              s.body.toLowerCase().includes(q)
+          )
+        : snippets
+    ).slice(0, 200);
+    list.innerHTML = "";
+    if (hits.length === 0) {
+      list.innerHTML = '<p class="palette-sub">該当なし</p>';
+      return;
+    }
+    for (const s of hits) {
+      const row = document.createElement("div");
+      row.className = "snippet-row";
+      const main = document.createElement("div");
+      main.className = "snippet-main";
+      const label = document.createElement("div");
+      label.className = "snippet-label";
+      label.textContent = s.prefix ? `${s.prefix} — ${s.name}` : s.name;
+      const body = document.createElement("div");
+      body.className = "snippet-body";
+      body.textContent = s.body;
+      main.append(label, body);
+      if (s.description) {
+        const desc = document.createElement("div");
+        desc.className = "snippet-desc";
+        desc.textContent = s.description;
+        main.appendChild(desc);
+      }
+      row.appendChild(main);
+      row.title = `${s.source}`;
+      row.addEventListener("click", () => {
+        onPick(s.body);
+        close();
+      });
+      list.appendChild(row);
+    }
+  };
+  search.addEventListener("input", render);
+  render();
+  search.focus();
+}
+
 let contextMenuEl = null;
 
 function hideContextMenu() {
@@ -1236,9 +1334,23 @@ function renderFolderContext(el) {
     }
   }
 
-  el.appendChild(
-    labeled("Prompt", autoGrowTextarea(g.positive, (v) => (g.positive = v)))
+  const promptInput = autoGrowTextarea(g.positive, (v) => (g.positive = v));
+  el.appendChild(labeled("Prompt", promptInput));
+
+  // スニペット挿入
+  const snipBtn = document.createElement("button");
+  snipBtn.textContent = "🧩 スニペットを挿入";
+  snipBtn.addEventListener("click", () =>
+    openSnippetPicker((body) => {
+      const cur = promptInput.value.trim();
+      const next = cur ? `${cur}, ${body}` : body;
+      promptInput.value = next;
+      g.positive = next;
+      promptInput.style.height = "auto";
+      promptInput.style.height = `${promptInput.scrollHeight + 2}px`;
+    })
   );
+  el.appendChild(snipBtn);
 
   // ライブラリの類似プロンプト参照（旧 {library_context} 相当）
   const simBtn = document.createElement("button");
@@ -2344,20 +2456,23 @@ $("#btn-embed").addEventListener("click", async () => {
   }
 });
 
-// モード切替（ライブラリ / シーケンス）
+// モード切替（ライブラリ / シーケンス / スニペット）
 for (const tab of document.querySelectorAll(".topbar-tab")) {
   tab.addEventListener("click", async () => {
     if (tab.classList.contains("is-active")) return;
     document.querySelectorAll(".topbar-tab").forEach((t) => t.classList.remove("is-active"));
     tab.classList.add("is-active");
-    const isSeq = tab.dataset.mode === "sequence";
-    $("#view-library").hidden = isSeq;
-    $("#view-sequence").hidden = !isSeq;
-    if (isSeq) await run(activateSequenceView);
+    const mode = tab.dataset.mode;
+    $("#view-library").hidden = mode !== "library";
+    $("#view-sequence").hidden = mode !== "sequence";
+    $("#view-snippets").hidden = mode !== "snippets";
+    if (mode === "sequence") await run(activateSequenceView);
+    else if (mode === "snippets") await run(activateSnippetsView);
   });
 }
 
 initSequenceView();
+initSnippetsView();
 
 // 生成キューのパネル開閉
 $("#btn-queue").addEventListener("click", () => {
@@ -2416,7 +2531,6 @@ run(async () => {
       await renderContext();
     }
   }
-  if (p.get("mode") === "sequence") {
-    document.querySelector('.topbar-tab[data-mode="sequence"]').click();
-  }
+  const modeTab = document.querySelector(`.topbar-tab[data-mode="${p.get("mode")}"]`);
+  if (modeTab && !modeTab.classList.contains("is-active")) modeTab.click();
 });

@@ -13,6 +13,7 @@
       <div class="topbar-tabs">
         <button type="button" class="topbar-tab is-active" data-mode="library">ライブラリ</button>
         <button type="button" class="topbar-tab" data-mode="sequence">シーケンス</button>
+        <button type="button" class="topbar-tab" data-mode="snippets">スニペット</button>
       </div>
       <div class="topbar-actions">
         <div id="service-status" class="service-status" title="バックエンドの起動状態（クリックで再確認）"></div>
@@ -130,6 +131,30 @@
       </aside>
     </main>
     <audio id="seq-bgm-audio" loop></audio>
+
+    <!-- スニペット編集モード -->
+    <main class="panes panes-snippets" id="view-snippets" hidden>
+      <aside class="pane pane-tree">
+        <div class="pane-toolbar">
+          <button type="button" id="btn-snip-new" title="新しいスニペットファイル">＋</button>
+          <button type="button" id="btn-snip-delete" title="ファイルを削除">🗑</button>
+          <button type="button" id="btn-snip-reveal" title="スニペットフォルダを開く">📂</button>
+        </div>
+        <div id="snip-files" class="tree"></div>
+        <div class="root-bar">
+          <span id="snip-root"></span>
+          <button type="button" id="btn-snip-root" title="スニペットフォルダを変更">📁</button>
+        </div>
+      </aside>
+
+      <section class="pane pane-snip-editor">
+        <div class="pane-toolbar">
+          <span id="snip-editing" class="snip-editing"></span>
+          <button type="button" id="btn-snip-save" class="primary" disabled>💾 保存</button>
+        </div>
+        <textarea id="snip-editor" class="snip-editor" spellcheck="false" placeholder="左のファイルを選択してください（VSCode .code-snippets 形式の JSON）"></textarea>
+      </section>
+    </main>
 
     <footer class="statusbar">
       <span id="status"></span>
