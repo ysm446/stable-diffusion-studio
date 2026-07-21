@@ -11,6 +11,7 @@ import { showInputDialog } from "/frontend/dialog.js";
 const $ = (sel) => document.querySelector(sel);
 
 const NODE_W = 150;
+const NODE_H = 120; // 概算の高さ（フィット計算・範囲選択の当たり判定用）
 const PORT_CY = 50; // ノード上端からポート中心までの Y
 
 async function api(path, options = {}) {
@@ -40,6 +41,7 @@ const seqState = {
   filter: "",
   view: { panX: 40, panY: 40, zoom: 1 },
   selectedNode: null,
+  selectedNodes: new Set(), // 範囲選択されたノード id（一括移動・一括削除用）
   playOrder: [],
   playPos: -1,
   playHighlight: null,
@@ -149,6 +151,7 @@ async function selectSequence(id) {
   stopPlayback();
   seqState.currentId = id;
   seqState.selectedNode = null;
+  seqState.selectedNodes = new Set();
   seqState.dirty = false;
   try {
     seqState.seq = await api(`/api/sequences/${id}`);
@@ -275,7 +278,7 @@ function fitView() {
     minX = Math.min(minX, n.x);
     minY = Math.min(minY, n.y);
     maxX = Math.max(maxX, n.x + NODE_W);
-    maxY = Math.max(maxY, n.y + 120);
+    maxY = Math.max(maxY, n.y + NODE_H);
   }
   const pad = 40;
   const w = maxX - minX + pad * 2;
@@ -315,7 +318,9 @@ function renderGraph() {
     const el = document.createElement("div");
     el.className = "seq-node";
     if (node.missing) el.classList.add("missing");
-    if (node.id === seqState.selectedNode) el.classList.add("selected");
+    if (node.id === seqState.selectedNode || seqState.selectedNodes.has(node.id)) {
+      el.classList.add("selected");
+    }
     if (seqState.playPos >= 0 && node.id === seqState.playHighlight) el.classList.add("playing");
     el.style.left = `${node.x}px`;
     el.style.top = `${node.y}px`;
@@ -463,9 +468,26 @@ function removeNode(id) {
   seqState.seq.nodes = seqState.seq.nodes.filter((n) => n.id !== id);
   seqState.seq.edges = seqState.seq.edges.filter((e) => e.src !== id && e.dst !== id);
   if (seqState.selectedNode === id) seqState.selectedNode = null;
+  seqState.selectedNodes.delete(id);
   stopPlayback();
   renderGraph();
   markDirty();
+}
+
+// 範囲選択されたノード（＋フォーカス中ノード）をまとめて削除
+function removeSelectedNodes() {
+  if (!seqState.seq) return;
+  const ids = new Set(seqState.selectedNodes);
+  if (seqState.selectedNode != null) ids.add(seqState.selectedNode);
+  if (!ids.size) return;
+  seqState.seq.nodes = seqState.seq.nodes.filter((n) => !ids.has(n.id));
+  seqState.seq.edges = seqState.seq.edges.filter((e) => !ids.has(e.src) && !ids.has(e.dst));
+  seqState.selectedNode = null;
+  seqState.selectedNodes = new Set();
+  stopPlayback();
+  renderGraph();
+  markDirty();
+  setSeqStatus(`${ids.size} 件のノードを削除しました`);
 }
 
 function addEdge(src, dst) {
@@ -542,6 +564,13 @@ function initCanvasInteractions() {
 
   canvas.addEventListener("mousedown", (e) => {
     if (!seqState.seq) return;
+    // 中ボタンドラッグ → パン（どこを掴んでもよい）
+    if (e.button === 1) {
+      e.preventDefault();
+      startPan(e);
+      return;
+    }
+    if (e.button !== 0) return;
     const portEl = e.target.closest(".seq-port");
     const nodeEl = e.target.closest(".seq-node");
 
@@ -558,8 +587,19 @@ function initCanvasInteractions() {
       startNodeDrag(parseInt(nodeEl.dataset.id, 10), e);
       return;
     }
-    // 空きをドラッグ → パン
-    startPan(e);
+    // 空きを左ドラッグ → 範囲選択（クリックだけなら選択解除）
+    startRubberBand(e);
+  });
+
+  // Del キー：範囲選択したノードを削除（入力中は無効）
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "Delete") return;
+    if ($("#view-sequence").hidden) return;
+    const tag = (document.activeElement?.tagName || "").toLowerCase();
+    if (tag === "input" || tag === "textarea" || document.activeElement?.isContentEditable) return;
+    if (!seqState.selectedNodes.size && seqState.selectedNode == null) return;
+    e.preventDefault();
+    removeSelectedNodes();
   });
 }
 
@@ -579,21 +619,98 @@ function startPan(e) {
   document.addEventListener("mouseup", onUp);
 }
 
+// 選択状態のハイライトだけを更新（ドラッグ中の再描画を避ける）
+function updateNodeSelectionClasses() {
+  document.querySelectorAll("#seq-nodes .seq-node").forEach((el) => {
+    const id = parseInt(el.dataset.id, 10);
+    el.classList.toggle(
+      "selected",
+      seqState.selectedNodes.has(id) || id === seqState.selectedNode
+    );
+  });
+}
+
+// 空き地の左ドラッグで矩形の範囲選択。Shift 押下で既存の選択に追加する
+function startRubberBand(e) {
+  const canvas = $("#seq-canvas");
+  const rect = canvas.getBoundingClientRect();
+  const start = { x: e.clientX, y: e.clientY };
+  const base = e.shiftKey ? new Set(seqState.selectedNodes) : new Set();
+  let box = null;
+  const onMove = (ev) => {
+    if (!box) {
+      if (Math.abs(ev.clientX - start.x) < 3 && Math.abs(ev.clientY - start.y) < 3) return;
+      box = document.createElement("div");
+      box.className = "seq-select-box";
+      canvas.appendChild(box);
+    }
+    const left = Math.min(start.x, ev.clientX);
+    const top = Math.min(start.y, ev.clientY);
+    const right = Math.max(start.x, ev.clientX);
+    const bottom = Math.max(start.y, ev.clientY);
+    box.style.left = `${left - rect.left}px`;
+    box.style.top = `${top - rect.top}px`;
+    box.style.width = `${right - left}px`;
+    box.style.height = `${bottom - top}px`;
+    // グラフ座標で矩形とノードの交差判定
+    const a = screenToGraph(left, top);
+    const b = screenToGraph(right, bottom);
+    const sel = new Set(base);
+    for (const n of seqState.seq.nodes) {
+      if (n.x < b.x && n.x + NODE_W > a.x && n.y < b.y && n.y + NODE_H > a.y) {
+        sel.add(n.id);
+      }
+    }
+    seqState.selectedNodes = sel;
+    updateNodeSelectionClasses();
+  };
+  const onUp = () => {
+    document.removeEventListener("mousemove", onMove);
+    document.removeEventListener("mouseup", onUp);
+    if (box) {
+      box.remove();
+      if (seqState.selectedNodes.size) {
+        setSeqStatus(`${seqState.selectedNodes.size} 件のノードを選択中（ドラッグで移動 / Del で削除）`);
+      }
+    } else {
+      // ドラッグせずクリック → 選択解除
+      seqState.selectedNodes = new Set();
+      seqState.selectedNode = null;
+      updateNodeSelectionClasses();
+    }
+  };
+  document.addEventListener("mousemove", onMove);
+  document.addEventListener("mouseup", onUp);
+}
+
 function startNodeDrag(id, e) {
   const node = seqState.seq.nodes.find((n) => n.id === id);
   if (!node) return;
+  // 範囲選択に含まれるノードを掴んだ場合は選択全体を一括移動する
+  const group =
+    seqState.selectedNodes.has(id) && seqState.selectedNodes.size > 1
+      ? seqState.seq.nodes.filter((n) => seqState.selectedNodes.has(n.id))
+      : [node];
   const start = screenToGraph(e.clientX, e.clientY);
-  const orig = { x: node.x, y: node.y };
+  const origs = new Map(group.map((n) => [n.id, { x: n.x, y: n.y }]));
+  const els = new Map(
+    group.map((n) => [n.id, $(`.seq-node[data-id="${n.id}"]`)])
+  );
   let moved = false;
-  const nodeEl = $(`.seq-node[data-id="${id}"]`);
   const onMove = (ev) => {
     const g = screenToGraph(ev.clientX, ev.clientY);
-    node.x = Math.round(orig.x + (g.x - start.x));
-    node.y = Math.round(orig.y + (g.y - start.y));
-    if (Math.abs(g.x - start.x) > 2 || Math.abs(g.y - start.y) > 2) moved = true;
-    if (nodeEl) {
-      nodeEl.style.left = `${node.x}px`;
-      nodeEl.style.top = `${node.y}px`;
+    const dx = g.x - start.x;
+    const dy = g.y - start.y;
+    if (Math.abs(dx) > 2 || Math.abs(dy) > 2) moved = true;
+    for (const n of group) {
+      const orig = origs.get(n.id);
+      n.x = Math.round(orig.x + dx);
+      n.y = Math.round(orig.y + dy);
+      const el = els.get(n.id);
+      if (el) {
+        el.style.left = `${n.x}px`;
+        el.style.top = `${n.y}px`;
+      }
     }
     renderEdges();
   };
@@ -605,6 +722,7 @@ function startNodeDrag(id, e) {
     } else {
       // クリック = 選択してそのノードから再生
       seqState.selectedNode = id;
+      seqState.selectedNodes = new Set();
       renderGraph();
       playFrom(id);
     }

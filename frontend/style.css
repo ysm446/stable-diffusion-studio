@@ -733,10 +733,18 @@ textarea.auto-grow {
   background:
     radial-gradient(circle, rgba(255, 255, 255, 0.05) 1px, transparent 1px) 0 0 / 22px 22px,
     var(--bg);
-  cursor: grab;
+  /* 左ドラッグ = 範囲選択、中ボタンドラッグ = パン */
+  cursor: default;
 }
 
-.seq-canvas:active { cursor: grabbing; }
+/* 範囲選択の矩形 */
+.seq-select-box {
+  position: absolute;
+  z-index: 20;
+  border: 1px dashed var(--accent);
+  background: rgba(79, 195, 247, 0.12); /* --accent の半透明 */
+  pointer-events: none;
+}
 .seq-canvas.is-drop-target { outline: 2px dashed var(--accent); outline-offset: -4px; }
 
 .seq-canvas-inner {
