@@ -120,7 +120,7 @@ def generate_image_to_item(params: dict[str, Any], status: StatusFn) -> dict[str
             gen_params.setdefault(key.replace("cfg_scale", "cfg"), meta_raw[key])
 
     status("ライブラリに保存中...")
-    return items.create_item(
+    item = items.create_item(
         folder,
         image_to_png_bytes(image),
         prompt=positive or meta_raw.get("positive", ""),
@@ -128,6 +128,14 @@ def generate_image_to_item(params: dict[str, Any], status: StatusFn) -> dict[str
         seed=used_seed if used_seed >= 0 else None,
         params=gen_params,
     )
+    # 元画像から生成した場合は、その画像のすぐ左隣（直前）に並べる
+    near = str(params.get("near_item") or "")
+    if near:
+        try:
+            item = items.place_before(item["id"], near)
+        except items.LibraryError:
+            pass  # 参照元が削除済みでも生成自体は成功として扱う
+    return item
 
 
 def generate_video_for_item(params: dict[str, Any], status: StatusFn) -> dict[str, Any]:

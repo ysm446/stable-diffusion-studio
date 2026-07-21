@@ -1,7 +1,7 @@
 # Progress
 
 作成日時: 2026-05-19 23:05
-更新日時: 2026-07-22 01:55
+更新日時: 2026-07-22 03:25
 
 このファイルは、完了した作業、確認したこと、残っている注意点を共有するための進捗管理ドキュメントです。
 
@@ -92,6 +92,24 @@ Image Assistant は、初期の Gradio / A1111 想定から、Electron UI + Fast
   `frontend/snippet-autocomplete.js` を追加した（↑↓ / Tab / Enter / Esc、候補メニューは body 直下に共有 1 個）。
 - スニペットタブをフォーム式編集 UI（ファイル一覧 / 項目一覧＋全ファイル検索 / Name・Prefix・Description・Body フォーム）にし、生 JSON 編集にも切り替え可能にした。`GET /api/snippets/entries` を追加。保存はフロントで JSON を組み立てて既存 `PUT /api/snippets/file` を使う（JSONC のコメントは保存時に失われる）。
 - シーケンス編集・スニペット編集で Ctrl+S 保存に対応した。
+
+### 生成結果の配置と NEW 表示（2026-07-22）
+
+- 画像生成 API に `near_item`（元画像 ID）を追加。指定時は `items.place_before` で
+  元画像の sort_order ＋ 1e-6 を設定し、一覧（sort_order 降順＝新しいものほど左・上）で
+  元画像のすぐ左隣（直前）に並べる。同じ元画像から複数生成した場合は created_at 降順の
+  タイブレークで新しい順が保たれる。
+- フロントは「✨ この設定で新規生成」（state.genNearId、フォルダ移動でクリア）と
+  詳細パネルの「🖼 新規生成でキューに追加」で near_item を渡す。通常のフォルダ生成は従来通り先頭。
+- 生成完了時にアイテム ID を localStorage（`studio_new_item_ids`、直近 300 件）へ記録し、
+  カードに NEW バッジ（accent 色・点滅）を表示。クリック（handleCardClick / selectItem）で解除。
+- 検証: `tests/test_generation_service.py` に near_item の配置と参照元欠落時のフォールバックを追加し、
+  `test_library_core.py` と合わせて通過。UI は実機での確認が必要（サーバー変更のため要再起動）。
+- バグ修正: 動画生成パネル表示中（videoPanel=true）は renderContext が selectedVideoFile より
+  生成パネルを優先するため、生成直後の動画をストリップでクリックしてもプロパティに切り替わらなかった。
+  handleVideoClick で videoPanel を解除するよう修正。
+- グリッド内並べ替えを複数選択ドラッグに対応（internalDragId → internalDragIds、
+  reorderItems は選択群をグリッド順のままドロップ位置へ挿入）。フォルダへの複数ドロップ移動は従来通り。
 - 検証: `node --check`、`parse_entries` のスモークテスト、テスト用サーバー（ポート 8799）＋ヘッドレス Chrome のスクリーンショットで UI を確認。候補メニューはヘッドレスのスクリーンショットでのみ描画されない現象があったが、DOM・ヒットテスト・clone 描画・キー操作での挿入はすべて正常で、ヘッドレス固有のコンポジット問題と判断（実機は Ctrl+R 後に要確認）。
 
 ## 確認済みの補足

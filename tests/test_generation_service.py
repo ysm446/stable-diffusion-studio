@@ -64,6 +64,28 @@ def main() -> None:
     )
     assert meta2["seed"] is None
 
+    # near_item 指定時は元アイテムのすぐ上（グリッドの左隣）に並ぶ
+    meta_near = service.generate_image_to_item(
+        {
+            "folder": "gen",
+            "positive": "near test",
+            "seed": -1,
+            "backend": "WebUI Forge",
+            "near_item": meta["id"],
+        },
+        statuses.append,
+    )
+    assert meta_near["sort_order"] > meta["sort_order"]
+    listed = [r["id"] for r in index_db.list_items("gen")]
+    assert listed.index(meta_near["id"]) == listed.index(meta["id"]) - 1
+    # 参照元が存在しなくても生成は成功する
+    meta_gone = service.generate_image_to_item(
+        {"folder": "gen", "positive": "y", "seed": -1, "backend": "WebUI Forge",
+         "near_item": "no-such-item"},
+        statuses.append,
+    )
+    assert meta_gone["id"]
+
     # --- 動画生成（ComfyUI モック） ---
     comfy_process._enabled = False
 

@@ -48,6 +48,7 @@ const state = {
   rootInfo: null, // /api/library/root の結果
   llm: { models: [], loaded: null, selected: "" },
   genRef: null, // 生成パネル上部に表示する基準画像 {id, image, label}
+  genNearId: null, // 「この設定で新規生成」の元画像 ID（生成結果をこの隣に並べる）
   itemDraft: null, // 画像プロパティパネルの編集ドラフト {id, draft}（再描画で編集を失わないため）
   queue: [], // 生成キュー
   lastImageSeed: null, // 復元用（直近の画像シード）
@@ -277,6 +278,7 @@ async function selectFolder(rel) {
   state.videoPanel = false;
   state.query = "";
   state.genRef = null; // 別フォルダに移ったら基準画像はクリア
+  state.genNearId = null;
   $("#search").value = "";
   updateHash();
   renderTree();
@@ -384,6 +386,30 @@ async function loadItems() {
   renderGrid();
 }
 
+// 新規生成されてまだクリックされていないアイテム ID（NEW バッジ表示用）。
+// リロード・再起動後も保持し、カードをクリックしたら解除する。
+const NEW_ITEMS_KEY = "studio_new_item_ids";
+let newItemIds;
+try {
+  newItemIds = new Set(JSON.parse(localStorage.getItem(NEW_ITEMS_KEY) || "[]"));
+} catch {
+  newItemIds = new Set();
+}
+
+function persistNewItems() {
+  // 増えすぎないよう直近 300 件だけ保持
+  localStorage.setItem(NEW_ITEMS_KEY, JSON.stringify([...newItemIds].slice(-300)));
+}
+
+function markItemNew(id) {
+  newItemIds.add(id);
+  persistNewItems();
+}
+
+function markItemSeen(id) {
+  if (newItemIds.delete(id)) persistNewItems();
+}
+
 function renderGrid() {
   const grid = $("#grid");
   grid.innerHTML = "";
@@ -406,23 +432,23 @@ function renderGrid() {
     card.draggable = true;
     card.addEventListener("dragstart", (e) => {
       // 複数選択中のカードをドラッグしたら選択全体を対象にする
-      //（複数ドラッグはフォルダ移動専用。グリッド内並べ替えは単一ドラッグのみ）
+      //（フォルダ移動もグリッド内並べ替えもまとめて動かす）
       const multi = state.selectedIds.has(item.id) && state.selectedIds.size > 1;
-      internalDragId = multi ? null : item.id;
+      internalDragIds = multi ? [...state.selectedIds] : [item.id];
       e.dataTransfer.setData("application/x-item-id", item.id);
       e.dataTransfer.setData(
         "application/x-item-ids",
-        JSON.stringify(multi ? [...state.selectedIds] : [item.id])
+        JSON.stringify(internalDragIds)
       );
       e.dataTransfer.effectAllowed = "move";
     });
     card.addEventListener("dragend", () => {
-      internalDragId = null;
+      internalDragIds = null;
       card.classList.remove("drop-before", "drop-after");
     });
     // グリッド内での並べ替え
     card.addEventListener("dragover", (e) => {
-      if (!internalDragId || internalDragId === item.id) return;
+      if (!internalDragIds || internalDragIds.includes(item.id)) return;
       e.preventDefault();
       e.dataTransfer.dropEffect = "move";
       const rect = card.getBoundingClientRect();
@@ -434,9 +460,16 @@ function renderGrid() {
       card.classList.remove("drop-before", "drop-after")
     );
     card.addEventListener("drop", (e) => {
-      const dragged = e.dataTransfer.getData("application/x-item-id");
       card.classList.remove("drop-before", "drop-after");
-      if (!dragged || dragged === item.id) return;
+      let dragged = [];
+      try {
+        dragged = JSON.parse(e.dataTransfer.getData("application/x-item-ids") || "[]");
+      } catch {}
+      if (!dragged.length) {
+        const single = e.dataTransfer.getData("application/x-item-id");
+        if (single) dragged = [single];
+      }
+      if (!dragged.length || dragged.includes(item.id)) return;
       e.preventDefault();
       e.stopPropagation();
       const rect = card.getBoundingClientRect();
@@ -456,6 +489,14 @@ function renderGrid() {
       badge.className = "badge";
       badge.textContent = `🎞 ${item.video_count}`;
       card.appendChild(badge);
+    }
+
+    if (newItemIds.has(item.id)) {
+      card.classList.add("is-new");
+      const nb = document.createElement("span");
+      nb.className = "new-badge";
+      nb.textContent = "NEW";
+      card.appendChild(nb);
     }
 
     const caption = document.createElement("div");
@@ -515,6 +556,7 @@ function renderGrid() {
 
 // カードのクリック（修飾キーで複数選択）
 function handleCardClick(itemId, index, e) {
+  markItemSeen(itemId); // クリックしたら NEW 表示を解除（後続の renderGrid で反映）
   if (e.shiftKey && state.anchorIndex != null) {
     // 範囲選択
     const [a, b] = [state.anchorIndex, index].sort((x, y) => x - y);
@@ -565,6 +607,7 @@ async function bulkDelete(ids) {
 }
 
 async function selectItem(itemId) {
+  markItemSeen(itemId);
   state.selectedId = itemId;
   state.selectedIds = new Set([itemId]);
   state.selectedVideoFile = null;
@@ -626,6 +669,12 @@ function renderVideoStrip() {
 
 // 動画ストリップのクリック（修飾キーで複数選択）
 async function handleVideoClick(file, index, e) {
+  // 動画生成パネル表示中でも、動画をクリックしたらそのプロパティ表示へ切り替える
+  // （renderContext では videoPanel が selectedVideoFile より優先されるため）
+  if (state.videoPanel) {
+    state.videoPanel = false;
+    updateHash();
+  }
   const videos = (state.currentItem?.videos || []).map((v) => v.file);
   if (e.shiftKey && state.videoAnchorIndex != null) {
     const [a, b] = [state.videoAnchorIndex, index].sort((x, y) => x - y);
@@ -714,6 +763,8 @@ async function useItemForGeneration(item) {
   $("#search").value = "";
   // 生成パネル上部に元画像を表示（生成するたびに更新される）
   state.genRef = { id: item.id, image: item.image, label: "元の画像" };
+  // 生成結果は元画像の隣に並べる（フォルダを移るまで有効）
+  state.genNearId = item.id;
   updateHash();
   renderTree();
   await loadItems();
@@ -914,16 +965,19 @@ $("#import-files").addEventListener("change", async (e) => {
 });
 
 // グリッド内ドラッグ（並べ替え）の識別用。アプリ内カードのドラッグ中は import しない
-let internalDragId = null;
+let internalDragIds = null;
 
-async function reorderItems(draggedId, targetId, after) {
-  const ids = state.items.map((it) => it.id);
-  const from = ids.indexOf(draggedId);
-  let to = ids.indexOf(targetId);
-  if (from < 0 || to < 0) return;
-  ids.splice(from, 1);
-  to = ids.indexOf(targetId);
-  ids.splice(after ? to + 1 : to, 0, draggedId);
+async function reorderItems(draggedIds, targetId, after) {
+  const dragSet = new Set(draggedIds);
+  if (dragSet.has(targetId)) return;
+  const current = state.items.map((it) => it.id);
+  // ドラッグ中のカードは現在のグリッド順を保ったまま、ターゲット位置へまとめて挿入する
+  const moving = current.filter((id) => dragSet.has(id));
+  if (moving.length === 0) return;
+  const ids = current.filter((id) => !dragSet.has(id));
+  const to = ids.indexOf(targetId);
+  if (to < 0) return;
+  ids.splice(after ? to + 1 : to, 0, ...moving);
   // 楽観的に並べ替えて即描画
   const byId = new Map(state.items.map((it) => [it.id, it]));
   state.items = ids.map((id) => byId.get(id));
@@ -978,7 +1032,7 @@ videoStrip.addEventListener("drop", async (e) => {
 const grid = $("#grid");
 grid.addEventListener("dragover", (e) => {
   // 外部ファイルのドロップ（取り込み）だけ受け付ける。カードの並べ替えはカード側で処理
-  if (!internalDragId && [...e.dataTransfer.types].includes("Files")) {
+  if (!internalDragIds && [...e.dataTransfer.types].includes("Files")) {
     e.preventDefault();
     grid.classList.add("is-drop-target");
   }
@@ -986,7 +1040,7 @@ grid.addEventListener("dragover", (e) => {
 grid.addEventListener("dragleave", () => grid.classList.remove("is-drop-target"));
 grid.addEventListener("drop", async (e) => {
   grid.classList.remove("is-drop-target");
-  if (internalDragId) return; // アプリ内ドラッグは取り込まない
+  if (internalDragIds) return; // アプリ内ドラッグは取り込まない
   e.preventDefault();
   if (e.dataTransfer.files.length > 0) await importFiles(e.dataTransfer.files);
 });
@@ -1490,7 +1544,9 @@ function enqueueImage() {
     return;
   }
   saveGenSettings();
-  enqueueImageJob(state.folder, { ...state.genImage });
+  const params = { ...state.genImage };
+  if (state.genNearId) params.near_item = state.genNearId;
+  enqueueImageJob(state.folder, params);
 }
 
 // 指定フォルダ・指定パラメータで画像生成をキューに積む
@@ -1572,6 +1628,7 @@ async function runImageJob(job) {
   });
   if (err) throw new Error(err);
   job.message = status;
+  if (result) markItemNew(result.id);
   if (result && result.seed !== null && result.seed !== undefined) {
     state.lastImageSeed = result.seed;
   }
@@ -2110,6 +2167,7 @@ function renderItemContext(el, item) {
       cfg: d.cfg,
       sampler: d.sampler,
       seed: d.seed,
+      near_item: item.id, // 生成結果はこの画像の隣に並べる
     });
   });
   btnRow.appendChild(genBtn);

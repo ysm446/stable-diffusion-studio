@@ -454,6 +454,29 @@ body {
   text-overflow: ellipsis;
 }
 
+/* 新規生成されてまだクリックされていないカードの NEW 表示 */
+.card.is-new { border-color: var(--accent); }
+
+.card .new-badge {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  background: var(--accent);
+  color: #0d2530;
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+  animation: new-badge-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes new-badge-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+
 /* --------------------------------------------------------------- context */
 
 .context {

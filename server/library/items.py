@@ -172,6 +172,27 @@ def update_item(item_id: str, fields: dict[str, Any]) -> dict[str, Any]:
     return meta
 
 
+def place_before(item_id: str, ref_item_id: str) -> dict[str, Any]:
+    """item を ref_item のすぐ上（sort_order 降順で直前＝グリッドの左隣）に配置する。
+
+    一覧は「新しいものほど左・上」なので、生成結果は元画像の直前に入れる。
+    同じ ref から複数回生成しても sort_order が同値になるだけで、
+    created_at 降順のタイブレークにより新しいものほど ref から離れた左側に並ぶ
+    （＝新しい順が保たれる）。
+    """
+    ref = get_item(ref_item_id)
+    d = item_dir(item_id)
+    meta = load_meta(d)
+    meta["sort_order"] = float(ref.get("sort_order") or 0) + 1e-6
+    save_meta(d, meta)
+    root = paths.get_library_root()
+    folder = d.parent.relative_to(root).as_posix()
+    folder = "" if folder == "." else folder
+    index_db.upsert_item(meta, folder)
+    meta["folder"] = folder
+    return meta
+
+
 def reorder(folder_rel: str, ordered_ids: list[str]) -> None:
     """フォルダ内アイテムを ordered_ids の並び（先頭が上）に並べ替える。
 
