@@ -127,6 +127,37 @@ def list_snippets() -> list[dict[str, str]]:
     return result
 
 
+def parse_entries(rel_path: str) -> list[dict[str, str]]:
+    """1 ファイルをフォーム編集用のエントリ一覧に変換する（body 空も含む）。"""
+    path = _resolve(rel_path)
+    if not path.is_file():
+        raise SnippetError("ファイルが見つかりません")
+    try:
+        data = _parse_file(path)
+    except ValueError as e:
+        raise SnippetError(f"JSON として不正です: {e}")
+    entries: list[dict[str, str]] = []
+    for name, item in data.items():
+        if not isinstance(item, dict):
+            continue
+        body = item.get("body", [])
+        if isinstance(body, str):
+            text = body
+        elif isinstance(body, list):
+            text = "\n".join(str(b) for b in body)
+        else:
+            text = ""
+        entries.append(
+            {
+                "name": str(name),
+                "prefix": str(item.get("prefix", "")).strip(),
+                "body": text,
+                "description": str(item.get("description", "")).strip(),
+            }
+        )
+    return entries
+
+
 def list_files() -> list[dict[str, Any]]:
     d = snippets_dir()
     files = []

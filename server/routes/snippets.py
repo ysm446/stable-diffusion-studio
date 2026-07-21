@@ -65,6 +65,11 @@ def read_file(path: str) -> dict[str, str]:
     return {"path": path, "content": _wrap(snippets.read_file, path)}
 
 
+@router.get("/entries")
+def read_entries(path: str) -> dict[str, Any]:
+    return {"path": path, "entries": _wrap(snippets.parse_entries, path)}
+
+
 class FileSave(BaseModel):
     path: str
     content: str

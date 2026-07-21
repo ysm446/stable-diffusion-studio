@@ -615,6 +615,14 @@ function initCanvasInteractions() {
     e.preventDefault();
     removeSelectedNodes();
   });
+
+  // Ctrl+S：表示中のシーケンスを保存（入力中でも有効）
+  document.addEventListener("keydown", (e) => {
+    if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== "s") return;
+    if ($("#view-sequence").hidden) return;
+    e.preventDefault();
+    saveSequence();
+  });
 }
 
 function startPan(e) {

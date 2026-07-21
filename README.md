@@ -32,10 +32,18 @@
 - FTS5 キーワード / ベクトル / ハイブリッド（RRF）検索。embedding は llama-server + GGUF で差分更新
 - 生成パネルからライブラリの類似プロンプトを検索して反映
 
+### スニペット
+- VSCode `.code-snippets` 形式で定型プロンプトを管理（`snippets/` フォルダ、UI から変更可）
+- Prompt / Negative Prompt / 動画プロンプトの入力中に prefix で自動候補を表示
+  （↑↓ で選択、Tab / Enter で挿入、Esc で閉じる）。「🧩 スニペットを挿入」ボタンからも検索して挿入可
+- 「スニペット」タブで編集：ファイル一覧 / 項目一覧（全ファイル横断検索）/
+  フォーム編集（Name・Prefix・Description・Body）。生 JSON の直接編集にも切り替え可。Ctrl+S で保存
+
 ### シーケンス（ノードグラフ）
 - ライブラリの動画をノードとして配置し、out→in ポートをドラッグで一本道につなぐ
 - パン / ズーム / ドラッグ移動 / エッジ切断 / 順路に沿った連続再生
 - ffmpeg で 1 本に書き出し（同一パラメータなら無劣化 concat、混在時は再エンコード）
+- Ctrl+S で表示中のシーケンスを保存
 
 ### その他
 - 上部バーに Forge / ComfyUI / LLM / Embedding の起動状態インジケーター
@@ -79,7 +87,8 @@ server/            FastAPI バックエンド
   generation/      Forge / ComfyUI / LLM / embedding クライアントとプロセス管理
   routes/          API（library / generation / sequences / llm / status）
   main.py          エントリポイント（ルーティング・起動/終了処理）
-frontend/          UI（vanilla JS、ビルド不要。app.js / sequence.js / dialog.js）
+frontend/          UI（vanilla JS、ビルド不要。app.js / sequence.js / snippets.js /
+                   snippet-autocomplete.js / dialog.js）
 electron/          デスクトップシェル
 workflows/         ComfyUI ワークフロー（image/ video/）
 models/            GGUF モデル（LLM / embedding、任意）
@@ -100,6 +109,7 @@ tests/             スモークテスト（python tests/test_*.py で実行）
 | `/api/generation` | 画像・動画生成（SSE）、ワークフロー一覧、類似プロンプト |
 | `/api/llm` | モデル一覧 / ロード / アンロード、動画プロンプト生成（SSE） |
 | `/api/sequences` | シーケンス CRUD、連結書き出し（SSE） |
+| `/api/snippets` | スニペット一覧 / ファイル CRUD / エントリ取得 / フォルダ設定 |
 | `/api/status` | バックエンド起動状態、システムリソース |
 | `/api/shutdown` `/api/free_vram` | VRAM 解放 |
 

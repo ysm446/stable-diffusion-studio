@@ -147,10 +147,41 @@
         </div>
       </aside>
 
+      <aside class="pane pane-snip-entries">
+        <div class="pane-toolbar">
+          <input type="search" id="snip-search" placeholder="全ファイルから項目を検索">
+          <button type="button" id="btn-snip-add-entry" title="項目を追加">＋</button>
+        </div>
+        <div id="snip-entries" class="tree"></div>
+      </aside>
+
       <section class="pane pane-snip-editor">
         <div class="pane-toolbar">
           <span id="snip-editing" class="snip-editing"></span>
+          <button type="button" id="btn-snip-json" hidden>{&nbsp;} JSON 編集</button>
           <button type="button" id="btn-snip-save" class="primary" disabled>💾 保存</button>
+        </div>
+        <div id="snip-form" class="snip-form" hidden>
+          <div class="snip-form-help">
+            <strong>prefix</strong>: 補完・挿入時の検索キー ／
+            <strong>body</strong>: 実際に挿入される文字列 ／
+            <strong>description</strong>: 候補一覧に出る説明
+          </div>
+          <label class="snip-form-field">Name（管理用の名前）
+            <input type="text" id="snip-f-name" placeholder="arms spread">
+          </label>
+          <label class="snip-form-field">Prefix
+            <input type="text" id="snip-f-prefix" placeholder="arms spread">
+          </label>
+          <label class="snip-form-field">Description
+            <input type="text" id="snip-f-desc" placeholder="腕を横に伸ばす">
+          </label>
+          <label class="snip-form-field snip-form-body">Body
+            <textarea id="snip-f-body" spellcheck="false" placeholder="arms spread"></textarea>
+          </label>
+          <div class="snip-form-footer">
+            <button type="button" id="btn-snip-del-entry">🗑 この項目を削除</button>
+          </div>
         </div>
         <textarea id="snip-editor" class="snip-editor" spellcheck="false" placeholder="左のファイルを選択してください（VSCode .code-snippets 形式の JSON）"></textarea>
       </section>

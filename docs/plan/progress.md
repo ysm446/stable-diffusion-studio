@@ -1,7 +1,7 @@
 # Progress
 
 作成日時: 2026-05-19 23:05
-更新日時: 2026-07-04 11:05
+更新日時: 2026-07-22 01:55
 
 このファイルは、完了した作業、確認したこと、残っている注意点を共有するための進捗管理ドキュメントです。
 
@@ -84,6 +84,15 @@ Image Assistant は、初期の Gradio / A1111 想定から、Electron UI + Fast
 - VRAM 使用状況の詳細内訳をデバッグ表示できるようにした。
 - LLM、Forge、ComfyUI のモデル解放やメモリ解放操作を追加した。
 - アプリ終了時に関連するコンソール画面も閉じるようにした。
+
+### スニペット（2026-07-22）
+
+- 旧 Image Assistant のスニペット機能を Studio へ移植した（VSCode `.code-snippets` 形式、`snippets/` フォルダは設定 `snippets_root` で変更可）。
+- Prompt / Negative Prompt / 動画プロンプトの入力中に prefix の自動候補を表示する
+  `frontend/snippet-autocomplete.js` を追加した（↑↓ / Tab / Enter / Esc、候補メニューは body 直下に共有 1 個）。
+- スニペットタブをフォーム式編集 UI（ファイル一覧 / 項目一覧＋全ファイル検索 / Name・Prefix・Description・Body フォーム）にし、生 JSON 編集にも切り替え可能にした。`GET /api/snippets/entries` を追加。保存はフロントで JSON を組み立てて既存 `PUT /api/snippets/file` を使う（JSONC のコメントは保存時に失われる）。
+- シーケンス編集・スニペット編集で Ctrl+S 保存に対応した。
+- 検証: `node --check`、`parse_entries` のスモークテスト、テスト用サーバー（ポート 8799）＋ヘッドレス Chrome のスクリーンショットで UI を確認。候補メニューはヘッドレスのスクリーンショットでのみ描画されない現象があったが、DOM・ヒットテスト・clone 描画・キー操作での挿入はすべて正常で、ヘッドレス固有のコンポジット問題と判断（実機は Ctrl+R 後に要確認）。
 
 ## 確認済みの補足
 

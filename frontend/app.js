@@ -5,6 +5,7 @@
 
 import { initSequenceView, activateSequenceView } from "/frontend/sequence.js";
 import { initSnippetsView, activateSnippetsView } from "/frontend/snippets.js";
+import { attachSnippetAutocomplete } from "/frontend/snippet-autocomplete.js";
 import { showInputDialog } from "/frontend/dialog.js";
 
 const state = {
@@ -730,6 +731,11 @@ async function useItemForGeneration(item) {
 
 let snippetCache = null;
 
+// スニペット編集タブでの保存・削除後にキャッシュを無効化する
+window.addEventListener("snippets-changed", () => {
+  snippetCache = null;
+});
+
 async function loadSnippets(force = false) {
   if (snippetCache && !force) return snippetCache;
   try {
@@ -1334,7 +1340,9 @@ function renderFolderContext(el) {
     }
   }
 
-  const promptInput = autoGrowTextarea(g.positive, (v) => (g.positive = v));
+  const promptInput = attachSnippetAutocomplete(
+    autoGrowTextarea(g.positive, (v) => (g.positive = v))
+  );
   el.appendChild(labeled("Prompt", promptInput));
 
   // スニペット挿入
@@ -1405,7 +1413,10 @@ function renderFolderContext(el) {
   el.appendChild(simResults);
 
   el.appendChild(
-    labeled("Negative Prompt", autoGrowTextarea(g.negative, (v) => (g.negative = v)))
+    labeled(
+      "Negative Prompt",
+      attachSnippetAutocomplete(autoGrowTextarea(g.negative, (v) => (g.negative = v)))
+    )
   );
 
   const row1 = document.createElement("div");
@@ -1693,7 +1704,9 @@ function renderVideoGenContext(el, item) {
   }
 
   // 動画プロンプト本文（LLM 生成の流し込み先になるため先に作る）
-  const promptField = autoGrowTextarea(g.prompt, (v) => (g.prompt = v));
+  const promptField = attachSnippetAutocomplete(
+    autoGrowTextarea(g.prompt, (v) => (g.prompt = v))
+  );
   el.appendChild(buildLlmPromptBox(item.id, g, promptField, (t) => (g.prompt = t)));
   el.appendChild(labeled("動画プロンプト", promptField));
 
@@ -1988,10 +2001,16 @@ function renderItemContext(el, item) {
   }
 
   el.appendChild(
-    editableField("Prompt", autoGrowTextarea(d.positive, (v) => (d.positive = v)))
+    editableField(
+      "Prompt",
+      attachSnippetAutocomplete(autoGrowTextarea(d.positive, (v) => (d.positive = v)))
+    )
   );
   el.appendChild(
-    editableField("Negative Prompt", autoGrowTextarea(d.negative, (v) => (d.negative = v)))
+    editableField(
+      "Negative Prompt",
+      attachSnippetAutocomplete(autoGrowTextarea(d.negative, (v) => (d.negative = v)))
+    )
   );
 
   const row1 = document.createElement("div");
@@ -2168,7 +2187,9 @@ function renderVideoPropsContext(el, item, v) {
   };
 
   // LLM プロンプト生成（追加指示・モデル・セクション選択を含む）
-  const promptField = autoGrowTextarea(d.prompt, (val) => (d.prompt = val));
+  const promptField = attachSnippetAutocomplete(
+    autoGrowTextarea(d.prompt, (val) => (d.prompt = val))
+  );
   el.appendChild(buildLlmPromptBox(item.id, d, promptField, (t) => (d.prompt = t)));
   el.appendChild(editableField("動画プロンプト", promptField));
   el.appendChild(

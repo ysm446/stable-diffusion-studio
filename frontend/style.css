@@ -1179,8 +1179,22 @@ textarea.auto-grow {
 .dialog-title { font-size: 13px; }
 
 /* スニペット編集ビュー */
-.panes-snippets { grid-template-columns: 280px 1fr; }
+.panes-snippets { grid-template-columns: 260px 280px 1fr; }
 .panes-snippets[hidden] { display: none; }
+
+.pane-snip-entries { background: var(--bg-pane); }
+
+.tree-node.snip-entry { gap: 8px; }
+
+.snip-entry-sub {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: right;
+  color: var(--text-dim);
+  font-size: 11px;
+}
 
 .pane-snip-editor {
   display: flex;
@@ -1239,6 +1253,105 @@ textarea.auto-grow {
   word-break: break-word;
 }
 .snippet-desc { font-size: 11px; color: var(--text-dim); margin-top: 2px; }
+
+/* スニペットのフォーム編集 */
+.snip-form {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+}
+
+.snip-form-help {
+  font-size: 11px;
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 8px;
+}
+
+.snip-form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.snip-form-field input,
+.snip-form-field textarea {
+  width: 100%;
+}
+
+.snip-form-body { flex: 1; min-height: 0; }
+
+.snip-form-body textarea {
+  flex: 1;
+  min-height: 160px;
+  resize: vertical;
+  font-family: inherit;
+}
+
+.snip-form-footer {
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* プロンプト入力中のスニペット自動候補メニュー */
+.snippet-suggest {
+  position: absolute;
+  z-index: 3000;
+  display: none;
+  flex-direction: column;
+  max-height: 260px;
+  overflow: auto;
+  background: var(--bg-pane);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.5);
+  padding: 3px;
+}
+
+.snippet-suggest.is-open { display: flex; }
+
+.snippet-suggest-item {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  border: none;
+  background: none;
+  border-radius: 4px;
+  padding: 4px 8px;
+  cursor: pointer;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.snippet-suggest-item:hover { background: var(--bg-hover); }
+.snippet-suggest-item.is-active { background: var(--bg-active); }
+
+.snippet-suggest-prefix {
+  color: var(--accent);
+  font-size: 12px;
+  flex: none;
+}
+
+.snippet-suggest-source {
+  color: var(--text-dim);
+  font-size: 10px;
+  flex: none;
+}
+
+.snippet-suggest-desc {
+  color: var(--text);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 
 /* 画像の原寸表示ポップアップ（クリック / Esc で閉じる） */
 .image-popup {
