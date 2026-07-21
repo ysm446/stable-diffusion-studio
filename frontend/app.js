@@ -46,6 +46,7 @@ const state = {
   rootInfo: null, // /api/library/root の結果
   llm: { models: [], loaded: null, selected: "" },
   genRef: null, // 生成パネル上部に表示する基準画像 {id, image, label}
+  itemDraft: null, // 画像プロパティパネルの編集ドラフト {id, draft}（再描画で編集を失わないため）
   queue: [], // 生成キュー
   lastImageSeed: null, // 復元用（直近の画像シード）
   lastVideoSeed: null, // 復元用（直近の動画シード）
@@ -1370,17 +1371,22 @@ function enqueueImage() {
     setGenStatus("フォルダを選択してください", true);
     return;
   }
-  const label = (state.genImage.positive || "(プロンプトなし)").slice(0, 24);
+  saveGenSettings();
+  enqueueImageJob(state.folder, { ...state.genImage });
+}
+
+// 指定フォルダ・指定パラメータで画像生成をキューに積む
+function enqueueImageJob(folder, params) {
+  const label = (params.positive || "(プロンプトなし)").slice(0, 24);
   state.queue.push({
     id: ++queueSeq,
     type: "image",
-    folder: state.folder,
-    params: { ...state.genImage },
+    folder,
+    params: { ...params },
     status: "pending",
     label: `画像: ${label}`,
     message: "",
   });
-  saveGenSettings();
   updateQueueUI();
   processQueue();
   setGenStatus("生成キューに追加しました");
@@ -1793,6 +1799,8 @@ function currentVideoSettings() {
   };
 }
 
+// 画像選択時の右パネル。生成パネルと同じ編集 UI をこの画像の値で初期化して表示し、
+// 「保存」（画像へ書き戻し）と「生成キューに追加」（そのまま新規生成）を選べる。
 function renderItemContext(el, item) {
   const h = document.createElement("h2");
   h.textContent = item.id;
@@ -1808,66 +1816,163 @@ function renderItemContext(el, item) {
   );
   el.appendChild(img);
 
-  // プロンプト・パラメータ（編集可能）
-  const promptInput = autoGrowTextarea(item.prompt || "");
-  el.appendChild(editableField("Prompt", promptInput));
+  const p = item.params || {};
+  const num = (v) => {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : undefined;
+  };
+  // 編集ドラフト。バックエンド切替などの再描画で編集内容が消えないよう保持する
+  let d = state.itemDraft?.id === item.id ? state.itemDraft.draft : null;
+  if (!d) {
+    d = {
+      backend:
+        p.backend === "ComfyUI" || p.backend === "WebUI Forge"
+          ? p.backend
+          : state.genImage.backend,
+      workflow: p.workflow || state.genImage.workflow,
+      positive: item.prompt || "",
+      negative: item.negative_prompt || "",
+      width: num(p.width) ?? state.genImage.width,
+      height: num(p.height) ?? state.genImage.height,
+      steps: num(p.steps) ?? state.genImage.steps,
+      cfg: num(p.cfg) ?? num(p.cfg_scale) ?? state.genImage.cfg,
+      sampler:
+        p.sampler && state.options.forge_samplers.includes(p.sampler)
+          ? p.sampler
+          : state.genImage.sampler,
+      seed: item.seed ?? -1,
+      tags: (item.tags || []).join(", "),
+      caption: item.caption || "",
+      rest: null, // 専用フィールドで扱わない params の編集値
+    };
+    state.itemDraft = { id: item.id, draft: d };
+  }
 
-  const negInput = autoGrowTextarea(item.negative_prompt || "");
-  el.appendChild(editableField("Negative Prompt", negInput));
+  el.appendChild(
+    labeled("バックエンド", makeSelect(state.options.backends, d.backend, (v) => {
+      if (restEditor) d.rest = restEditor.getValues();
+      d.backend = v;
+      renderContext();
+    }))
+  );
 
-  const seedInput = document.createElement("input");
-  seedInput.type = "text";
-  seedInput.value =
-    item.seed !== null && item.seed !== undefined ? String(item.seed) : "";
-  el.appendChild(editableField("Seed", seedInput));
+  if (d.backend === "ComfyUI") {
+    el.appendChild(
+      labeled("ワークフロー", makeSelect(state.options.image_workflows, d.workflow, (v) => (d.workflow = v)))
+    );
+    if (!d.workflow && state.options.image_workflows.length > 0) {
+      d.workflow = state.options.image_workflows[0];
+    }
+  }
 
-  const paramsEditor =
-    item.params && Object.keys(item.params).length > 0
-      ? editableParamsField("Params", item.params)
+  el.appendChild(
+    editableField("Prompt", autoGrowTextarea(d.positive, (v) => (d.positive = v)))
+  );
+  el.appendChild(
+    editableField("Negative Prompt", autoGrowTextarea(d.negative, (v) => (d.negative = v)))
+  );
+
+  const row1 = document.createElement("div");
+  row1.className = "row";
+  row1.append(
+    labeled("Width", makeInput("number", d.width, (v) => (d.width = parseInt(v, 10) || 1024))),
+    labeled("Height", makeInput("number", d.height, (v) => (d.height = parseInt(v, 10) || 1024)))
+  );
+  el.appendChild(row1);
+
+  if (d.backend !== "ComfyUI") {
+    const row2 = document.createElement("div");
+    row2.className = "row";
+    row2.append(
+      labeled("Steps", makeInput("number", d.steps, (v) => (d.steps = parseInt(v, 10) || 28))),
+      labeled("CFG", makeInput("number", d.cfg, (v) => (d.cfg = parseFloat(v) || 7.0)))
+    );
+    el.appendChild(row2);
+    el.appendChild(
+      labeled("Sampler", makeSelect(state.options.forge_samplers, d.sampler, (v) => (d.sampler = v)))
+    );
+  }
+
+  el.appendChild(seedField("Seed", d, () => state.lastImageSeed));
+
+  // 専用フィールドで扱わない params は従来通り表で編集できるようにする
+  const SHOWN_KEYS = new Set(["backend", "workflow", "width", "height", "steps", "cfg", "cfg_scale", "sampler"]);
+  const restParams =
+    d.rest ||
+    Object.fromEntries(Object.entries(p).filter(([k]) => !SHOWN_KEYS.has(k)));
+  const restEditor =
+    Object.keys(restParams).length > 0
+      ? editableParamsField("その他の Params", restParams)
       : null;
-  if (paramsEditor) el.appendChild(paramsEditor);
+  if (restEditor) el.appendChild(restEditor);
 
   // タグ・キャプション
-  const tagsInput = document.createElement("input");
-  tagsInput.type = "text";
-  tagsInput.value = (item.tags || []).join(", ");
-  el.appendChild(editableField("タグ（カンマ区切り）", tagsInput));
+  el.appendChild(
+    editableField("タグ（カンマ区切り）", makeInput("text", d.tags, (v) => (d.tags = v)))
+  );
+  el.appendChild(
+    editableField("キャプション", makeTextarea(d.caption, 2, (v) => (d.caption = v)))
+  );
 
-  const capInput = document.createElement("textarea");
-  capInput.rows = 2;
-  capInput.value = item.caption || "";
-  el.appendChild(editableField("キャプション", capInput));
+  // 編集中の値から params を組み立てる（保存・生成で共用）
+  const buildParams = () => {
+    const params = { ...p, ...(restEditor ? restEditor.getValues() : {}) };
+    params.backend = d.backend;
+    if (d.backend === "ComfyUI") params.workflow = d.workflow;
+    params.width = d.width;
+    params.height = d.height;
+    if (d.backend !== "ComfyUI") {
+      params.steps = d.steps;
+      params.cfg = d.cfg;
+      params.sampler = d.sampler;
+    }
+    return params;
+  };
+
+  const btnRow = document.createElement("div");
+  btnRow.className = "row";
 
   const saveBtn = document.createElement("button");
-  saveBtn.textContent = "💾 プロパティを保存";
+  saveBtn.textContent = "💾 保存";
+  saveBtn.title = "編集した内容をこの画像に保存します（生成はしません）";
   saveBtn.addEventListener("click", async () => {
-    const seedRaw = seedInput.value.trim();
-    const seedNum = seedRaw === "" ? null : Number(seedRaw);
     const patch = {
-      prompt: promptInput.value,
-      negative_prompt: negInput.value,
-      seed: Number.isFinite(seedNum) ? seedNum : null,
-      tags: tagsInput.value
-        .split(",")
-        .map((t) => t.trim())
-        .filter(Boolean),
-      caption: capInput.value,
+      prompt: d.positive,
+      negative_prompt: d.negative,
+      seed: d.seed >= 0 ? d.seed : null,
+      tags: d.tags.split(",").map((t) => t.trim()).filter(Boolean),
+      caption: d.caption,
+      params: buildParams(),
     };
-    if (paramsEditor) patch.params = paramsEditor.getValues();
     await run(async () => {
       await apiJson(`/api/library/items/${item.id}`, "PATCH", patch);
       await loadItems();
     }, "保存しました");
   });
-  el.appendChild(saveBtn);
+  btnRow.appendChild(saveBtn);
 
-  // この画像のプロンプト・パラメータを生成パネルに読み込む
-  const useBtn = document.createElement("button");
-  useBtn.className = "primary";
-  useBtn.textContent = "✨ この設定で新規生成";
-  useBtn.title = "プロンプト・パラメータを生成パネルに読み込み、編集して生成できます";
-  useBtn.addEventListener("click", () => useItemForGeneration(item));
-  el.appendChild(useBtn);
+  const genBtn = document.createElement("button");
+  genBtn.className = "primary";
+  genBtn.textContent = "🖼 新規生成でキューに追加";
+  genBtn.title = "この内容で新しい画像を生成します（この画像は変更されません）";
+  genBtn.addEventListener("click", () => {
+    enqueueImageJob(item.folder ?? state.folder ?? "", {
+      backend: d.backend,
+      workflow: d.workflow,
+      positive: d.positive,
+      negative: d.negative,
+      width: d.width,
+      height: d.height,
+      steps: d.steps,
+      cfg: d.cfg,
+      sampler: d.sampler,
+      seed: d.seed,
+    });
+  });
+  btnRow.appendChild(genBtn);
+
+  el.appendChild(btnRow);
+  el.appendChild(genStatusLine());
 
   // 動画生成（動画一覧は下部ストリップに表示）
   const genVideoBtn = document.createElement("button");
