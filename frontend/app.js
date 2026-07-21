@@ -1581,6 +1581,7 @@ function renderVideoGenContext(el, item) {
     if (vs) {
       g.prompt = vs.prompt ?? "";
       g.extra = vs.extra_instruction ?? "";
+      if (Array.isArray(vs.sections) && vs.sections.length) g.sections = vs.sections;
       g.workflow = vs.workflow ?? g.workflow;
       g.width = vs.width ?? "";
       g.height = vs.height ?? "";
@@ -1645,8 +1646,7 @@ function renderVideoGenContext(el, item) {
 }
 
 // 「🤖 LLM で動画プロンプトを生成」ボックス（動画生成パネル / 動画プロパティ共用）。
-// s は { extra } を持つ編集対象（state.genVideo または編集ドラフト）。
-// セクション選択は共通設定（state.genVideo.sections）で、変更すると即保存される。
+// s は { extra, sections } を持つ編集対象（state.genVideo または編集ドラフト）。
 // 生成結果は promptField に流し込みつつ onText で編集対象へ反映する。
 function buildLlmPromptBox(itemId, s, promptField, onText) {
   const llmBox = document.createElement("div");
@@ -1715,27 +1715,25 @@ function buildLlmPromptBox(itemId, s, promptField, onText) {
   // モデル一覧・ロード状態を取得して行を更新
   loadLlmModels().then(renderModelRow);
 
-  // 生成するセクションのチェックボックス（共通の環境設定。変更すると即保存）
+  // 生成するセクションのチェックボックス
   const secWrap = document.createElement("div");
   secWrap.className = "field";
   secWrap.innerHTML = "<label>生成するセクション</label>";
   const secRow = document.createElement("div");
   secRow.className = "section-checks";
-  const sec = state.genVideo;
-  if (!Array.isArray(sec.sections) || !sec.sections.length) sec.sections = [...VIDEO_SECTIONS];
+  if (!Array.isArray(s.sections) || !s.sections.length) s.sections = [...VIDEO_SECTIONS];
   for (const name of VIDEO_SECTIONS) {
     const lbl = document.createElement("label");
     lbl.className = "section-check";
     const cb = document.createElement("input");
     cb.type = "checkbox";
-    cb.checked = sec.sections.includes(name);
+    cb.checked = s.sections.includes(name);
     cb.addEventListener("change", () => {
       if (cb.checked) {
-        if (!sec.sections.includes(name)) sec.sections.push(name);
+        if (!s.sections.includes(name)) s.sections.push(name);
       } else {
-        sec.sections = sec.sections.filter((n) => n !== name);
+        s.sections = s.sections.filter((n) => n !== name);
       }
-      saveGenSettings();
     });
     lbl.append(cb, document.createTextNode(" " + name));
     secRow.appendChild(lbl);
@@ -1772,7 +1770,7 @@ async function generateVideoPrompt(btn, itemId, promptField, s, onText) {
     setGenStatus("models/ フォルダに GGUF モデルが見つかりません", true);
     return;
   }
-  const sections = state.genVideo.sections || [];
+  const sections = s.sections || [];
   if (sections.length === 0) {
     setGenStatus("生成するセクションを1つ以上選んでください", true);
     return;
@@ -1822,6 +1820,7 @@ function currentVideoSettings() {
   return {
     prompt: g.prompt,
     extra_instruction: g.extra || "",
+    sections: g.sections || VIDEO_SECTIONS,
     workflow: g.workflow,
     width: g.width,
     height: g.height,
@@ -2063,6 +2062,10 @@ function renderVideoPropsContext(el, item, v) {
   const d = {
     prompt: v.prompt || vs.prompt || "",
     extra: vs.extra_instruction || "",
+    sections:
+      Array.isArray(vs.sections) && vs.sections.length
+        ? [...vs.sections]
+        : [...VIDEO_SECTIONS],
     workflow: vs.workflow || v.workflow || state.genVideo.workflow,
     width: vs.width ?? "",
     height: vs.height ?? "",
@@ -2098,6 +2101,7 @@ function renderVideoPropsContext(el, item, v) {
     ...vs,
     prompt: d.prompt,
     extra_instruction: d.extra,
+    sections: d.sections,
     workflow: d.workflow,
     width: d.width,
     height: d.height,

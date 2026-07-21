@@ -175,6 +175,7 @@ def generate_video_for_item(params: dict[str, Any], status: StatusFn) -> dict[st
     settings = {
         "prompt": prompt,
         "extra_instruction": params.get("extra_instruction", ""),
+        "sections": params.get("sections") or [],
         "workflow": workflow,
         "width": params.get("width", ""),
         "height": params.get("height", ""),
