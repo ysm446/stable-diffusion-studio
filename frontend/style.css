@@ -807,7 +807,12 @@ textarea.auto-grow {
 .seq-node:active { cursor: grabbing; }
 .seq-node.selected { border-color: var(--accent); }
 .seq-node.playing { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent); }
-.seq-node.missing { border-color: var(--danger); }
+.seq-node.missing {
+  border: 1px dashed var(--danger);
+  box-shadow: 0 0 0 1px rgba(239, 83, 80, 0.35); /* --danger の半透明 */
+}
+
+.seq-node.missing .seq-node-label { color: var(--danger); }
 
 .seq-node-thumb {
   width: 100%;
@@ -825,7 +830,26 @@ textarea.auto-grow {
   object-fit: cover;
 }
 
-.seq-node-missing { color: var(--danger); font-size: 12px; }
+.seq-node-missing {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  text-align: center;
+  color: var(--danger);
+  font-size: 11px;
+  line-height: 1.4;
+  background: repeating-linear-gradient(
+    45deg,
+    rgba(239, 83, 80, 0.12) 0 8px,
+    transparent 8px 16px
+  );
+}
+
+.seq-node-missing-icon {
+  display: block;
+  font-size: 20px;
+}
 
 .seq-node-label {
   padding: 4px 6px;

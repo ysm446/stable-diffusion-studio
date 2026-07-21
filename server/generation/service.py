@@ -159,6 +159,10 @@ def generate_video_for_item(params: dict[str, Any], status: StatusFn) -> dict[st
     )
     if not isinstance(result, str):
         raise RuntimeError("動画ではなく画像として出力されました。ワークフロー選択を確認してください。")
+    # seed=-1（ランダム）のときは実際に使われた seed を記録する
+    used_seed = comfy_client.get_last_actual_seed()
+    if used_seed < 0:
+        used_seed = seed
 
     status("ライブラリに保存中...")
     ext = os.path.splitext(result)[1].lower()
@@ -180,7 +184,7 @@ def generate_video_for_item(params: dict[str, Any], status: StatusFn) -> dict[st
         "width": params.get("width", ""),
         "height": params.get("height", ""),
         "frames": params.get("frames", ""),
-        "seed": seed,
+        "seed": used_seed,
     }
     result_meta = items.add_video(
         item_id,

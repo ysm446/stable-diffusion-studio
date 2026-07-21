@@ -164,7 +164,19 @@ async function selectSequence(id) {
   renderBgm();
   updateSaveButton();
   if (seqState.seq && seqState.seq.nodes.length) fitView();
+  warnMissingNodes();
   loadSequenceIntoPlayer();
+}
+
+// 参照切れ（元の画像・動画が削除された）ノードがあればステータスで警告する
+function warnMissingNodes() {
+  const count = (seqState.seq?.nodes || []).filter((n) => n.missing).length;
+  if (count > 0) {
+    setSeqStatus(
+      `⚠ 参照切れのクリップが ${count} 件あります（元の画像または動画が削除されています）`,
+      true
+    );
+  }
 }
 
 // シーケンス選択時：先頭クリップをプレイヤーに頭出しロード（再生はしない）。
@@ -337,7 +349,9 @@ function renderGraph() {
     const thumb = document.createElement("div");
     thumb.className = "seq-node-thumb";
     if (node.missing) {
-      thumb.innerHTML = '<span class="seq-node-missing">⚠ 欠落</span>';
+      thumb.innerHTML =
+        '<div class="seq-node-missing"><span class="seq-node-missing-icon">⚠</span>元の画像/動画が<br>削除されています</div>';
+      el.title = `参照切れ: ${node.item_id}/${node.file}`;
     } else {
       const img = document.createElement("img");
       img.src = thumbUrl(node.item_id, node.thumb);
@@ -1563,6 +1577,14 @@ export async function activateSequenceView() {
   if (!seqState.currentId && seqState.list.length > 0) {
     await selectSequence(seqState.list[0].id);
   } else {
+    // ライブラリ側で画像や動画が削除されていても missing 表示が更新されるよう、
+    // 未保存の編集がなければ表示中のシーケンスを再解決する
+    if (seqState.currentId && seqState.seq && !seqState.dirty) {
+      try {
+        seqState.seq = await api(`/api/sequences/${seqState.currentId}`);
+      } catch {}
+      warnMissingNodes();
+    }
     applyView();
     renderGraph();
     renderBgm();

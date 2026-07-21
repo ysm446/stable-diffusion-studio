@@ -1479,7 +1479,11 @@ async function runVideoJob(job) {
   });
   if (err) throw new Error(err);
   job.message = status;
-  if (typeof job.params.seed === "number" && job.params.seed >= 0) {
+  // ランダム指定（-1）でも、サーバーが記録した実際の seed を復元用に控える
+  const usedSeed = result?.video_settings?.seed;
+  if (typeof usedSeed === "number" && usedSeed >= 0) {
+    state.lastVideoSeed = usedSeed;
+  } else if (typeof job.params.seed === "number" && job.params.seed >= 0) {
     state.lastVideoSeed = job.params.seed;
   }
   await loadTree();
