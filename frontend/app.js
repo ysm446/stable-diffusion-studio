@@ -243,6 +243,9 @@ function setupFolderDrop(row, rel) {
       const single = e.dataTransfer.getData("application/x-item-id");
       if (single) ids = [single];
     }
+    // すでにそのフォルダにあるものは除外（同一フォルダへの移動はサーバーがエラーにする）
+    const byId = new Map(state.items.map((it) => [it.id, it]));
+    ids = ids.filter((id) => byId.get(id)?.folder !== rel);
     if (!ids.length) return;
     await run(async () => {
       for (const itemId of ids) {
@@ -1084,34 +1087,6 @@ function editableParamsField(labelText, params, open = false) {
   return details;
 }
 
-// 折りたたみ式のパラメータ表（プルダウン・読み取り専用）
-function paramsField(labelText, params, open = false) {
-  const details = document.createElement("details");
-  details.className = "params-field";
-  details.open = open;
-  const summary = document.createElement("summary");
-  summary.textContent = `${labelText}（${Object.keys(params).length}）`;
-  details.appendChild(summary);
-
-  const table = document.createElement("div");
-  table.className = "params-table";
-  for (const [k, v] of Object.entries(params)) {
-    const row = document.createElement("div");
-    row.className = "params-row";
-    const key = document.createElement("span");
-    key.className = "params-key";
-    key.textContent = k;
-    const val = document.createElement("span");
-    val.className = "params-val";
-    val.textContent = String(v);
-    val.title = String(v);
-    row.append(key, val);
-    table.appendChild(row);
-  }
-  details.appendChild(table);
-  return details;
-}
-
 // フォーム部品ヘルパー -------------------------------------------------------
 
 function labeled(labelText, input) {
@@ -1479,7 +1454,8 @@ async function runImageJob(job) {
   }
   await loadTree();
   if (state.folder === job.folder) {
-    if (!state.selectedId && state.selectedIds.size === 0) await loadItems();
+    // 選択状態は state に保持されているため、選択中でも一覧へ反映してよい
+    await loadItems();
     // 生成パネル表示中なら基準画像を更新
     if (!state.selectedId && !state.videoPanel && result) {
       state.genRef = { id: result.id, image: result.image, label: "直近の生成" };
@@ -1954,6 +1930,8 @@ function renderItemContext(el, item) {
     if (d.backend !== "ComfyUI") {
       params.steps = d.steps;
       params.cfg = d.cfg;
+      // 旧形式のキーが残っていると値が食い違うため揃える
+      if ("cfg_scale" in params) params.cfg_scale = d.cfg;
       params.sampler = d.sampler;
     }
     return params;

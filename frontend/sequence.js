@@ -1388,9 +1388,11 @@ export function initSequenceView() {
   const player = $("#seq-player");
   const playerWrap = $(".seq-player-wrap");
   let clickTimer = null;
+  // シークのドラッグが動画の上で終わると click が playerWrap に飛ぶため抑止する
+  let seekDragging = false;
   playerWrap.addEventListener("click", (e) => {
     // transport バー上のクリック（シーク・ボタン）は再生トグルにしない
-    if (e.target.closest(".seq-transport")) return;
+    if (seekDragging || e.target.closest(".seq-transport")) return;
     // シングルクリックはダブルクリック確定を少し待ってから実行
     clearTimeout(clickTimer);
     clickTimer = setTimeout(togglePlay, 200);
@@ -1413,11 +1415,14 @@ export function initSequenceView() {
       const rect = bar.getBoundingClientRect();
       seekTo((clientX - rect.left) / rect.width);
     };
+    seekDragging = true;
     seekAt(e.clientX);
     const onMove = (ev) => seekAt(ev.clientX);
     const onUp = () => {
       document.removeEventListener("mousemove", onMove);
       document.removeEventListener("mouseup", onUp);
+      // mouseup 直後の click を抑止してから解除する
+      setTimeout(() => (seekDragging = false), 0);
     };
     document.addEventListener("mousemove", onMove);
     document.addEventListener("mouseup", onUp);
