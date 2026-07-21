@@ -232,13 +232,25 @@ function setupFolderDrop(row, rel) {
   row.addEventListener("drop", async (e) => {
     e.preventDefault();
     row.classList.remove("is-drop-target");
-    const itemId = e.dataTransfer.getData("application/x-item-id");
-    if (!itemId) return;
+    let ids = [];
+    try {
+      ids = JSON.parse(e.dataTransfer.getData("application/x-item-ids") || "[]");
+    } catch {
+      ids = [];
+    }
+    if (!ids.length) {
+      const single = e.dataTransfer.getData("application/x-item-id");
+      if (single) ids = [single];
+    }
+    if (!ids.length) return;
     await run(async () => {
-      await apiJson(`/api/library/items/${itemId}/move`, "POST", { folder: rel });
-      if (state.selectedId === itemId) state.selectedId = null;
+      for (const itemId of ids) {
+        await apiJson(`/api/library/items/${itemId}/move`, "POST", { folder: rel });
+      }
+      if (ids.includes(state.selectedId)) state.selectedId = null;
+      ids.forEach((itemId) => state.selectedIds.delete(itemId));
       await refresh();
-    }, "移動しました");
+    }, ids.length > 1 ? `${ids.length} 件移動しました` : "移動しました");
   });
 }
 
@@ -387,8 +399,15 @@ function renderGrid() {
     if (item.id === state.selectedId) card.classList.add("is-focused");
     card.draggable = true;
     card.addEventListener("dragstart", (e) => {
-      internalDragId = item.id;
+      // 複数選択中のカードをドラッグしたら選択全体を対象にする
+      //（複数ドラッグはフォルダ移動専用。グリッド内並べ替えは単一ドラッグのみ）
+      const multi = state.selectedIds.has(item.id) && state.selectedIds.size > 1;
+      internalDragId = multi ? null : item.id;
       e.dataTransfer.setData("application/x-item-id", item.id);
+      e.dataTransfer.setData(
+        "application/x-item-ids",
+        JSON.stringify(multi ? [...state.selectedIds] : [item.id])
+      );
       e.dataTransfer.effectAllowed = "move";
     });
     card.addEventListener("dragend", () => {
