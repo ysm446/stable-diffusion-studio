@@ -1153,6 +1153,26 @@ function makeSelect(choices, value, onChange) {
   return sel;
 }
 
+// 画像をアプリ内ポップアップ（ライトボックス）で原寸表示する。
+// クリックまたは Esc で閉じる。
+function showImagePopup(url) {
+  const overlay = document.createElement("div");
+  overlay.className = "dialog-overlay image-popup";
+  const img = document.createElement("img");
+  img.src = url;
+  overlay.appendChild(img);
+  const onKey = (e) => {
+    if (e.key === "Escape") close();
+  };
+  const close = () => {
+    overlay.remove();
+    document.removeEventListener("keydown", onKey);
+  };
+  overlay.addEventListener("click", close);
+  document.addEventListener("keydown", onKey);
+  document.body.appendChild(overlay);
+}
+
 function genStatusLine() {
   const line = document.createElement("div");
   line.className = "gen-status";
@@ -1354,7 +1374,7 @@ function updateGenRefPreview() {
   img.src = `/api/library/file/${state.genRef.id}/${state.genRef.image}`;
   img.title = "クリックで原寸表示";
   img.addEventListener("click", () =>
-    window.open(`/api/library/file/${state.genRef.id}/${state.genRef.image}`, "_blank")
+    showImagePopup(`/api/library/file/${state.genRef.id}/${state.genRef.image}`)
   );
   box.append(label, img);
 }
@@ -1393,16 +1413,21 @@ function enqueueImageJob(folder, params) {
 }
 
 function enqueueVideo(itemId, label) {
+  saveGenSettings();
+  enqueueVideoJob(itemId, currentVideoSettings(), label);
+}
+
+// 指定アイテム・指定パラメータで動画生成をキューに積む
+function enqueueVideoJob(itemId, params, label) {
   state.queue.push({
     id: ++queueSeq,
     type: "video",
     itemId,
-    params: currentVideoSettings(),
+    params: { ...params },
     status: "pending",
     label: `動画: ${label || itemId}`,
     message: "",
   });
-  saveGenSettings();
   updateQueueUI();
   processQueue();
   setGenStatus("生成キューに追加しました");
@@ -1556,7 +1581,6 @@ function renderVideoGenContext(el, item) {
     if (vs) {
       g.prompt = vs.prompt ?? "";
       g.extra = vs.extra_instruction ?? "";
-      if (Array.isArray(vs.sections) && vs.sections.length) g.sections = vs.sections;
       g.workflow = vs.workflow ?? g.workflow;
       g.width = vs.width ?? "";
       g.height = vs.height ?? "";
@@ -1575,7 +1599,56 @@ function renderVideoGenContext(el, item) {
     g.workflow = state.options.video_workflows[0];
   }
 
-  // LLM で動画プロンプトを生成 --------------------------------------------
+  // 動画プロンプト本文（LLM 生成の流し込み先になるため先に作る）
+  const promptField = autoGrowTextarea(g.prompt, (v) => (g.prompt = v));
+  el.appendChild(buildLlmPromptBox(item.id, g, promptField, (t) => (g.prompt = t)));
+  el.appendChild(labeled("動画プロンプト", promptField));
+
+  const row = document.createElement("div");
+  row.className = "row";
+  row.append(
+    labeled("Width（空でWF値）", makeInput("number", g.width, (v) => (g.width = v))),
+    labeled("Height", makeInput("number", g.height, (v) => (g.height = v)))
+  );
+  el.appendChild(row);
+
+  el.appendChild(labeled("Frames（空でWF値）", makeInput("number", g.frames, (v) => (g.frames = v))));
+  el.appendChild(seedField("Seed", g, () => state.lastVideoSeed));
+
+  const genBtn = document.createElement("button");
+  genBtn.className = "primary";
+  genBtn.textContent = "🎞 動画生成をキューに追加";
+  genBtn.addEventListener("click", () => enqueueVideo(item.id, item.prompt || item.id));
+  el.appendChild(genBtn);
+
+  const saveSettingsBtn = document.createElement("button");
+  saveSettingsBtn.textContent = "💾 この設定を保存（生成せず）";
+  saveSettingsBtn.title = "追加指示・プロンプト等を画像に保存します（次回この画像を開くと復元されます）";
+  saveSettingsBtn.addEventListener("click", async () => {
+    await run(async () => {
+      await apiJson(`/api/library/items/${item.id}`, "PATCH", {
+        video_settings: currentVideoSettings(),
+      });
+    }, "動画設定を保存しました");
+  });
+  el.appendChild(saveSettingsBtn);
+
+  const backBtn = document.createElement("button");
+  backBtn.textContent = "← 画像詳細に戻る";
+  backBtn.addEventListener("click", async () => {
+    state.videoPanel = false;
+    updateHash();
+    await renderContext();
+  });
+  el.appendChild(backBtn);
+  el.appendChild(genStatusLine());
+}
+
+// 「🤖 LLM で動画プロンプトを生成」ボックス（動画生成パネル / 動画プロパティ共用）。
+// s は { extra } を持つ編集対象（state.genVideo または編集ドラフト）。
+// セクション選択は共通設定（state.genVideo.sections）で、変更すると即保存される。
+// 生成結果は promptField に流し込みつつ onText で編集対象へ反映する。
+function buildLlmPromptBox(itemId, s, promptField, onText) {
   const llmBox = document.createElement("div");
   llmBox.className = "llm-box";
 
@@ -1587,7 +1660,7 @@ function renderVideoGenContext(el, item) {
   llmBox.appendChild(
     labeled(
       "追加指示（任意）",
-      autoGrowTextarea(g.extra, (v) => (g.extra = v))
+      autoGrowTextarea(s.extra, (v) => (s.extra = v))
     )
   );
 
@@ -1642,25 +1715,27 @@ function renderVideoGenContext(el, item) {
   // モデル一覧・ロード状態を取得して行を更新
   loadLlmModels().then(renderModelRow);
 
-  // 生成するセクションのチェックボックス
+  // 生成するセクションのチェックボックス（共通の環境設定。変更すると即保存）
   const secWrap = document.createElement("div");
   secWrap.className = "field";
   secWrap.innerHTML = "<label>生成するセクション</label>";
   const secRow = document.createElement("div");
   secRow.className = "section-checks";
-  if (!Array.isArray(g.sections)) g.sections = [...VIDEO_SECTIONS];
+  const sec = state.genVideo;
+  if (!Array.isArray(sec.sections) || !sec.sections.length) sec.sections = [...VIDEO_SECTIONS];
   for (const name of VIDEO_SECTIONS) {
     const lbl = document.createElement("label");
     lbl.className = "section-check";
     const cb = document.createElement("input");
     cb.type = "checkbox";
-    cb.checked = g.sections.includes(name);
+    cb.checked = sec.sections.includes(name);
     cb.addEventListener("change", () => {
       if (cb.checked) {
-        if (!g.sections.includes(name)) g.sections.push(name);
+        if (!sec.sections.includes(name)) sec.sections.push(name);
       } else {
-        g.sections = g.sections.filter((s) => s !== name);
+        sec.sections = sec.sections.filter((n) => n !== name);
       }
+      saveGenSettings();
     });
     lbl.append(cb, document.createTextNode(" " + name));
     secRow.appendChild(lbl);
@@ -1672,53 +1747,10 @@ function renderVideoGenContext(el, item) {
   genPromptBtn.className = "primary";
   genPromptBtn.textContent = "✨ 動画プロンプトを生成";
   genPromptBtn.addEventListener("click", () =>
-    generateVideoPrompt(genPromptBtn, item.id, promptField)
+    generateVideoPrompt(genPromptBtn, itemId, promptField, s, onText)
   );
   llmBox.appendChild(genPromptBtn);
-  el.appendChild(llmBox);
-
-  // 動画プロンプト本文
-  const promptField = autoGrowTextarea(g.prompt, (v) => (g.prompt = v));
-  el.appendChild(labeled("動画プロンプト", promptField));
-
-  const row = document.createElement("div");
-  row.className = "row";
-  row.append(
-    labeled("Width（空でWF値）", makeInput("number", g.width, (v) => (g.width = v))),
-    labeled("Height", makeInput("number", g.height, (v) => (g.height = v)))
-  );
-  el.appendChild(row);
-
-  el.appendChild(labeled("Frames（空でWF値）", makeInput("number", g.frames, (v) => (g.frames = v))));
-  el.appendChild(seedField("Seed", g, () => state.lastVideoSeed));
-
-  const genBtn = document.createElement("button");
-  genBtn.className = "primary";
-  genBtn.textContent = "🎞 動画生成をキューに追加";
-  genBtn.addEventListener("click", () => enqueueVideo(item.id, item.prompt || item.id));
-  el.appendChild(genBtn);
-
-  const saveSettingsBtn = document.createElement("button");
-  saveSettingsBtn.textContent = "💾 この設定を保存（生成せず）";
-  saveSettingsBtn.title = "追加指示・プロンプト等を画像に保存します（次回この画像を開くと復元されます）";
-  saveSettingsBtn.addEventListener("click", async () => {
-    await run(async () => {
-      await apiJson(`/api/library/items/${item.id}`, "PATCH", {
-        video_settings: currentVideoSettings(),
-      });
-    }, "動画設定を保存しました");
-  });
-  el.appendChild(saveSettingsBtn);
-
-  const backBtn = document.createElement("button");
-  backBtn.textContent = "← 画像詳細に戻る";
-  backBtn.addEventListener("click", async () => {
-    state.videoPanel = false;
-    updateHash();
-    await renderContext();
-  });
-  el.appendChild(backBtn);
-  el.appendChild(genStatusLine());
+  return llmBox;
 }
 
 async function loadLlmModels() {
@@ -1734,7 +1766,7 @@ async function loadLlmModels() {
   }
 }
 
-async function generateVideoPrompt(btn, itemId, promptField) {
+async function generateVideoPrompt(btn, itemId, promptField, s, onText) {
   if (btn.disabled) return;
   if (!state.llm.models.length) {
     setGenStatus("models/ フォルダに GGUF モデルが見つかりません", true);
@@ -1753,7 +1785,7 @@ async function generateVideoPrompt(btn, itemId, promptField) {
       "/api/llm/video-prompt",
       {
         item_id: itemId,
-        extra_instruction: state.genVideo.extra,
+        extra_instruction: s.extra,
         model: state.llm.selected || state.llm.models[0],
         sections,
       },
@@ -1765,7 +1797,7 @@ async function generateVideoPrompt(btn, itemId, promptField) {
         } else if (ev.type === "token") {
           text += ev.content;
           promptField.value = text;
-          state.genVideo.prompt = text;
+          onText(text);
           // 自動高さを反映（プログラム変更では input が飛ばないため手動で）
           promptField.style.height = "auto";
           promptField.style.height = `${promptField.scrollHeight + 2}px`;
@@ -1790,7 +1822,6 @@ function currentVideoSettings() {
   return {
     prompt: g.prompt,
     extra_instruction: g.extra || "",
-    sections: g.sections || VIDEO_SECTIONS,
     workflow: g.workflow,
     width: g.width,
     height: g.height,
@@ -1812,7 +1843,7 @@ function renderItemContext(el, item) {
   img.title = "クリックで原寸表示";
   img.style.cursor = "zoom-in";
   img.addEventListener("click", () =>
-    window.open(`/api/library/file/${item.id}/${item.image}`, "_blank")
+    showImagePopup(`/api/library/file/${item.id}/${item.image}`)
   );
   el.appendChild(img);
 
@@ -2027,54 +2058,82 @@ function renderVideoPropsContext(el, item, v) {
   fileLabel.textContent = `${v.file}　${(v.created_at || "").replace("T", " ").slice(0, 16)}`;
   el.appendChild(fileLabel);
 
+  // 選択した時点で編集できる生成フォーム。この動画の設定を初期値にする
   const vs = v.settings || {};
-  const vpInput = autoGrowTextarea(v.prompt || vs.prompt || "");
-  el.appendChild(editableField("動画プロンプト", vpInput));
-  const veInput = autoGrowTextarea(vs.extra_instruction || "");
-  el.appendChild(editableField("追加指示", veInput));
+  const d = {
+    prompt: v.prompt || vs.prompt || "",
+    extra: vs.extra_instruction || "",
+    workflow: vs.workflow || v.workflow || state.genVideo.workflow,
+    width: vs.width ?? "",
+    height: vs.height ?? "",
+    frames: vs.frames ?? "",
+    seed: typeof vs.seed === "number" ? vs.seed : -1,
+  };
 
-  if (vs && Object.keys(vs).length > 0) {
-    const shown = {};
-    for (const k of ["workflow", "width", "height", "frames", "seed"]) {
-      if (vs[k] !== undefined && vs[k] !== "") shown[k] = vs[k];
-    }
-    if (Object.keys(shown).length) el.appendChild(paramsField("生成パラメータ", shown));
+  // LLM プロンプト生成（追加指示・モデル・セクション選択を含む）
+  const promptField = autoGrowTextarea(d.prompt, (val) => (d.prompt = val));
+  el.appendChild(buildLlmPromptBox(item.id, d, promptField, (t) => (d.prompt = t)));
+  el.appendChild(editableField("動画プロンプト", promptField));
+  el.appendChild(
+    labeled("ワークフロー", makeSelect(state.options.video_workflows, d.workflow, (val) => (d.workflow = val)))
+  );
+  if (!d.workflow && state.options.video_workflows.length > 0) {
+    d.workflow = state.options.video_workflows[0];
   }
+
+  const sizeRow = document.createElement("div");
+  sizeRow.className = "row";
+  sizeRow.append(
+    labeled("Width（空でWF値）", makeInput("number", d.width, (val) => (d.width = val))),
+    labeled("Height", makeInput("number", d.height, (val) => (d.height = val)))
+  );
+  el.appendChild(sizeRow);
+  el.appendChild(
+    labeled("Frames（空でWF値）", makeInput("number", d.frames, (val) => (d.frames = val)))
+  );
+  el.appendChild(seedField("Seed", d, () => state.lastVideoSeed));
+
+  // 編集中の値を保存・生成で共用する形にまとめる
+  const buildSettings = () => ({
+    ...vs,
+    prompt: d.prompt,
+    extra_instruction: d.extra,
+    workflow: d.workflow,
+    width: d.width,
+    height: d.height,
+    frames: d.frames,
+    seed: d.seed,
+  });
+
+  const btnRow = document.createElement("div");
+  btnRow.className = "row";
 
   const saveBtn = document.createElement("button");
   saveBtn.textContent = "💾 保存";
+  saveBtn.title = "編集した内容をこの動画に保存します（生成はしません）";
   saveBtn.addEventListener("click", async () => {
     const name = v.file.split("/").pop();
     await run(async () => {
       await apiJson(`/api/library/items/${item.id}/videos/${encodeURIComponent(name)}`, "PATCH", {
-        prompt: vpInput.value,
-        settings: { ...vs, prompt: vpInput.value, extra_instruction: veInput.value },
+        prompt: d.prompt,
+        settings: buildSettings(),
       });
       await reloadCurrentItem();
     }, "保存しました");
   });
-  el.appendChild(saveBtn);
+  btnRow.appendChild(saveBtn);
 
-  const regenBtn = document.createElement("button");
-  regenBtn.className = "primary";
-  regenBtn.textContent = "✨ この設定で新規動画生成";
-  regenBtn.addEventListener("click", async () => {
-    const g = state.genVideo;
-    g.prompt = vpInput.value;
-    g.extra = veInput.value;
-    g.workflow = vs.workflow || v.workflow || g.workflow;
-    g.width = vs.width ?? "";
-    g.height = vs.height ?? "";
-    g.frames = vs.frames ?? "";
-    g.seed = vs.seed ?? -1;
-    g._loadedFor = item.id;
-    state.selectedVideoFile = null;
-    state.videoPanel = true;
-    updateHash();
-    renderVideoStrip();
-    await renderContext();
+  const genBtn = document.createElement("button");
+  genBtn.className = "primary";
+  genBtn.textContent = "🎞 新規生成でキューに追加";
+  genBtn.title = "この内容で新しい動画を生成します（この動画は変更されません）";
+  genBtn.addEventListener("click", () => {
+    enqueueVideoJob(item.id, buildSettings(), (d.prompt || item.id).slice(0, 24));
   });
-  el.appendChild(regenBtn);
+  btnRow.appendChild(genBtn);
+
+  el.appendChild(btnRow);
+  el.appendChild(genStatusLine());
 
   const del = document.createElement("button");
   del.className = "danger";

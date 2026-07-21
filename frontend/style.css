@@ -1146,6 +1146,22 @@ textarea.auto-grow {
 
 .dialog-title { font-size: 13px; }
 
+/* 画像の原寸表示ポップアップ（クリック / Esc で閉じる） */
+.image-popup {
+  background: rgba(0, 0, 0, 0.8);
+  cursor: zoom-out;
+}
+
+.image-popup img {
+  max-width: 96vw;
+  max-height: 96vh;
+  object-fit: contain;
+  background: #000;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
+}
+
 .dialog-box input { width: 100%; }
 
 .dialog-buttons {
