@@ -627,43 +627,31 @@ textarea.auto-grow {
 
 .seq-player-wrap {
   flex: 1;
-  display: grid;
-  place-items: center;
+  display: flex;
+  flex-direction: column;
   min-height: 0;
   background: #111;
   cursor: pointer;
 }
 
-.seq-player-wrap:fullscreen {
-  background: #000;
-  width: 100vw;
-  height: 100vh;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.seq-player-wrap:fullscreen #seq-player {
-  width: auto;
-  height: auto;
-  max-width: 100vw;
-  max-height: 100vh;
-  object-fit: contain;
-}
+.seq-player-wrap:fullscreen { background: #000; }
 
 #seq-player {
-  max-width: 100%;
-  max-height: 100%;
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  object-fit: contain;
   background: #000;
 }
 
-/* シーケンス独自の再生バー（シークは順路全体の長さ） */
+/* シーケンス独自の再生バー（シークは順路全体の長さ）。全画面でも表示される */
 .seq-transport {
   flex: none;
   display: flex;
   align-items: center;
   gap: 8px;
   padding: 6px 10px;
+  cursor: default;
   border-top: 1px solid var(--border);
   background: var(--bg-pane);
 }
@@ -680,8 +668,18 @@ textarea.auto-grow {
   color: var(--accent);
 }
 
-#btn-seq-save { margin-left: auto; }
-#btn-seq-save.is-dirty {
+/* シーケンス一覧の各行右端の保存ボタン */
+.tree-node .seq-save {
+  margin-left: auto;
+  flex: none;
+  padding: 0 5px;
+  font-size: 11px;
+  line-height: 18px;
+}
+
+.tree-node .seq-save:disabled { opacity: 0.35; }
+
+.tree-node .seq-save.is-dirty {
   border-color: var(--accent);
   color: var(--accent);
 }

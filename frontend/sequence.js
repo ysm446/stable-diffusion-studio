@@ -118,7 +118,25 @@ function renderList() {
     const count = document.createElement("span");
     count.className = "count";
     count.textContent = String(s.clip_count);
-    row.append(label, count);
+    // 保存ボタン（行の右端）。編集できるのは選択中のシーケンスだけなので、
+    // 有効になるのは「選択中かつ未保存の変更あり」のときのみ。
+    const save = document.createElement("button");
+    save.type = "button";
+    save.className = "seq-save";
+    save.title = "シーケンスを保存";
+    save.textContent = "💾";
+    if (s.id === seqState.currentId) {
+      save.id = "btn-seq-save";
+      save.disabled = !seqState.dirty;
+      save.classList.toggle("is-dirty", !!seqState.dirty);
+      save.addEventListener("click", (e) => {
+        e.stopPropagation();
+        saveSequence();
+      });
+    } else {
+      save.disabled = true;
+    }
+    row.append(label, count, save);
     row.addEventListener("click", () => selectSequence(s.id));
     el.appendChild(row);
   }
@@ -1337,8 +1355,6 @@ export function initSequenceView() {
     }
   });
 
-  $("#btn-seq-save").addEventListener("click", saveSequence);
-
   $("#btn-seq-delete").addEventListener("click", async () => {
     if (!seqState.seq) return;
     if (!confirm(`シーケンス「${seqState.seq.name}」を削除しますか？\n（動画ファイル自体は削除されません）`)) return;
@@ -1372,12 +1388,15 @@ export function initSequenceView() {
   const player = $("#seq-player");
   const playerWrap = $(".seq-player-wrap");
   let clickTimer = null;
-  playerWrap.addEventListener("click", () => {
+  playerWrap.addEventListener("click", (e) => {
+    // transport バー上のクリック（シーク・ボタン）は再生トグルにしない
+    if (e.target.closest(".seq-transport")) return;
     // シングルクリックはダブルクリック確定を少し待ってから実行
     clearTimeout(clickTimer);
     clickTimer = setTimeout(togglePlay, 200);
   });
-  playerWrap.addEventListener("dblclick", () => {
+  playerWrap.addEventListener("dblclick", (e) => {
+    if (e.target.closest(".seq-transport")) return;
     clearTimeout(clickTimer);
     if (document.fullscreenElement) {
       document.exitFullscreen().catch(() => {});

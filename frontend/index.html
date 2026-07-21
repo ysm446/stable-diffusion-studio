@@ -88,7 +88,6 @@
           <button type="button" id="btn-seq-new" title="新しいシーケンス">＋</button>
           <button type="button" id="btn-seq-rename" title="名前を変更">✎</button>
           <button type="button" id="btn-seq-delete" title="シーケンスを削除">🗑</button>
-          <button type="button" id="btn-seq-save" title="シーケンスを保存" disabled>💾 保存</button>
         </div>
         <div id="seq-list" class="tree"></div>
       </aside>
@@ -103,13 +102,14 @@
         </div>
         <div class="seq-player-wrap">
           <video id="seq-player"></video>
-        </div>
-        <div class="seq-transport">
-          <button type="button" id="seq-play-toggle" title="再生 / 一時停止">▶</button>
-          <button type="button" id="seq-loop-toggle" title="ループ再生">🔁</button>
-          <span id="seq-time-cur" class="seq-time">0:00</span>
-          <div id="seq-seek" class="seq-seek"><div id="seq-seek-fill"></div></div>
-          <span id="seq-time-total" class="seq-time">0:00</span>
+          <!-- プレイヤー枠の内側に置くことで全画面時もシークバーが表示される -->
+          <div class="seq-transport">
+            <button type="button" id="seq-play-toggle" title="再生 / 一時停止">▶</button>
+            <button type="button" id="seq-loop-toggle" title="ループ再生">🔁</button>
+            <span id="seq-time-cur" class="seq-time">0:00</span>
+            <div id="seq-seek" class="seq-seek"><div id="seq-seek-fill"></div></div>
+            <span id="seq-time-total" class="seq-time">0:00</span>
+          </div>
         </div>
         <div id="seq-canvas" class="seq-canvas">
           <div id="seq-canvas-inner" class="seq-canvas-inner">
