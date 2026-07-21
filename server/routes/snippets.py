@@ -34,6 +34,23 @@ def get_root() -> dict[str, Any]:
     return snippets.root_info()
 
 
+@router.post("/reveal")
+def reveal_folder() -> dict[str, bool]:
+    """スニペットフォルダをエクスプローラーで開く（無ければ作成）。"""
+    import os
+    import subprocess
+
+    d = snippets.snippets_dir()
+    try:
+        d.mkdir(parents=True, exist_ok=True)
+    except OSError as e:
+        raise HTTPException(status_code=400, detail=f"フォルダを作成できません: {e}")
+    if os.name != "nt":
+        raise HTTPException(status_code=400, detail="Windows のみ対応しています")
+    subprocess.Popen(["explorer", str(d)])
+    return {"ok": True}
+
+
 class RootUpdate(BaseModel):
     path: str = ""
 

@@ -191,9 +191,12 @@ export function initSnippetsView() {
   });
 
   $("#btn-snip-reveal").addEventListener("click", async () => {
-    // フォルダはエクスプローラーで開けないため、パスをステータスに表示
-    const r = await api("/api/snippets/root").catch(() => null);
-    if (r) setStatus(`スニペットフォルダ: ${r.root}`);
+    try {
+      await api("/api/snippets/reveal", { method: "POST" });
+      setStatus("スニペットフォルダをエクスプローラーで開きました");
+    } catch (e) {
+      setStatus(`フォルダを開けません: ${e.message}`);
+    }
   });
 }
 
