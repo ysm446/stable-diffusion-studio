@@ -2632,6 +2632,38 @@ async function refresh() {
   await renderContext();
 }
 
+// シーケンス編集のノード右クリックなどから「ライブラリの元動画を表示」する
+window.addEventListener("open-library-item", async (e) => {
+  const { itemId, file } = e.detail || {};
+  if (!itemId) return;
+  const item = await api(`/api/library/items/${itemId}`).catch(() => null);
+  if (!item) {
+    setStatus("元の画像が見つかりません（削除された可能性があります）", true);
+    return;
+  }
+  // ライブラリタブへ切り替え
+  const tab = document.querySelector('.topbar-tab[data-mode="library"]');
+  if (tab && !tab.classList.contains("is-active")) tab.click();
+  if (state.folder !== (item.folder ?? "")) {
+    await selectFolder(item.folder ?? "");
+  }
+  await selectItem(itemId);
+  const hasVideo = file && (item.videos || []).some((v) => v.file === file);
+  if (hasVideo) {
+    markVideoSeen(itemId, file);
+    state.selectedVideoFile = file;
+    state.selectedVideoFiles = new Set([file]);
+    renderVideoStrip();
+    await renderContext();
+  }
+  document.querySelector(`.card[data-id="${itemId}"]`)?.scrollIntoView({ block: "nearest" });
+  setStatus(
+    hasVideo
+      ? "ライブラリの元動画を表示しました"
+      : "元の画像を表示しました（この動画ファイルは見つかりません）"
+  );
+});
+
 run(async () => {
   const [, , saved, options] = await Promise.all([
     loadTree(),

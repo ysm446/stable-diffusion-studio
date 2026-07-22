@@ -387,10 +387,71 @@ function renderGraph() {
     });
     el.appendChild(rm);
 
+    // 右クリックでノードメニュー
+    el.addEventListener("contextmenu", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      showNodeMenu(e.clientX, e.clientY, node);
+    });
+
     nodesEl.appendChild(el);
   }
   renderEdges();
 }
+
+// ノードの右クリックメニュー -------------------------------------------------
+
+let nodeMenuEl = null;
+
+function hideNodeMenu() {
+  if (nodeMenuEl) {
+    nodeMenuEl.remove();
+    nodeMenuEl = null;
+  }
+}
+
+function showNodeMenu(x, y, node) {
+  hideNodeMenu();
+  const menu = document.createElement("div");
+  menu.className = "context-menu";
+
+  const jump = document.createElement("button");
+  jump.className = "context-menu-item";
+  jump.textContent = "📚 ライブラリの元動画を表示";
+  jump.title = `${node.item_id}/${node.file}`;
+  jump.addEventListener("click", () => {
+    hideNodeMenu();
+    // ライブラリ側（app.js）がこのイベントを受けてタブ切り替え・選択を行う
+    window.dispatchEvent(
+      new CustomEvent("open-library-item", {
+        detail: { itemId: node.item_id, file: node.file },
+      })
+    );
+  });
+  menu.appendChild(jump);
+
+  const del = document.createElement("button");
+  del.className = "context-menu-item danger";
+  del.textContent = "🗑 ノードを削除";
+  del.addEventListener("click", () => {
+    hideNodeMenu();
+    removeNode(node.id);
+  });
+  menu.appendChild(del);
+
+  document.body.appendChild(menu);
+  // 画面からはみ出さない位置に調整
+  const rect = menu.getBoundingClientRect();
+  menu.style.left = `${Math.min(x, window.innerWidth - rect.width - 4)}px`;
+  menu.style.top = `${Math.min(y, window.innerHeight - rect.height - 4)}px`;
+  nodeMenuEl = menu;
+}
+
+document.addEventListener("click", hideNodeMenu);
+window.addEventListener("blur", hideNodeMenu);
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") hideNodeMenu();
+});
 
 function portAnchor(node, kind) {
   return {
