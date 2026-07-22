@@ -181,7 +181,59 @@ function renderFiles() {
     count.textContent = String(f.count);
     row.append(label, count);
     row.addEventListener("click", () => selectFile(f.path));
+    // 項目ドラッグの移動先（編集中のファイル自身は除く）
+    row.addEventListener("dragover", (e) => {
+      if (entryDragIndex === null || f.path === snipState.current) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "move";
+      row.classList.add("is-drop-target");
+    });
+    row.addEventListener("dragleave", () => row.classList.remove("is-drop-target"));
+    row.addEventListener("drop", (e) => {
+      row.classList.remove("is-drop-target");
+      if (entryDragIndex === null || f.path === snipState.current) return;
+      e.preventDefault();
+      moveEntryToFile(entryDragIndex, f.path);
+    });
     el.appendChild(row);
+  }
+}
+
+// 項目ドラッグ（他ファイルへの移動）------------------------------------------
+
+let entryDragIndex = null; // ドラッグ中の項目 index（現在ファイルの entries 内）
+
+// 項目を別ファイルへ移動する。移動先に追記 → 元ファイルから削除の順で両方保存する
+// （元ファイルに未保存の編集があれば、それも一緒に保存される）
+async function moveEntryToFile(index, targetPath) {
+  const entry = snipState.entries[index];
+  if (!entry || !snipState.current || targetPath === snipState.current) return;
+  const label = entryLabel(entry, index);
+  try {
+    const targetEntries = (
+      await api(`/api/snippets/entries?path=${encodeURIComponent(targetPath)}`)
+    ).entries;
+    targetEntries.push({ ...entry });
+    await apiJson("/api/snippets/file", "PUT", {
+      path: targetPath,
+      content: entriesToJson(targetEntries),
+    });
+    snipState.entries.splice(index, 1);
+    const content = entriesToJson(snipState.entries);
+    await apiJson("/api/snippets/file", "PUT", { path: snipState.current, content });
+    snipState.rawContent = content;
+    snipState.dirty = false;
+    selectEntry(
+      snipState.entries.length > 0 ? Math.min(index, snipState.entries.length - 1) : -1
+    );
+    updateSaveButton();
+    snippetsChanged();
+    snipState.files = (await api("/api/snippets/files")).files;
+    renderFiles();
+    renderEntries();
+    setStatus(`「${label}」を ${targetPath} へ移動しました`);
+  } catch (e) {
+    setStatus(`移動エラー: ${e.message}`);
   }
 }
 
@@ -316,6 +368,16 @@ async function renderEntries() {
     row.addEventListener("click", () => {
       selectEntry(index);
       renderEntries();
+    });
+    // 左のファイル一覧へドラッグして項目を移動（JSON 直接編集中は無効）
+    row.draggable = !snipState.jsonMode;
+    row.title = "ドラッグで他のファイルへ移動";
+    row.addEventListener("dragstart", (ev) => {
+      entryDragIndex = index;
+      ev.dataTransfer.effectAllowed = "move";
+    });
+    row.addEventListener("dragend", () => {
+      entryDragIndex = null;
     });
     el.appendChild(row);
   });

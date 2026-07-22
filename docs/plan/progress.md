@@ -1,7 +1,7 @@
 # Progress
 
 作成日時: 2026-05-19 23:05
-更新日時: 2026-07-22 04:15
+更新日時: 2026-07-22 04:45
 
 このファイルは、完了した作業、確認したこと、残っている注意点を共有するための進捗管理ドキュメントです。
 
@@ -105,6 +105,13 @@ Image Assistant は、初期の Gradio / A1111 想定から、Electron UI + Fast
   カードに NEW バッジ（accent 色・点滅）を表示。クリック（handleCardClick / selectItem）で解除。
 - 動画にも同様の NEW バッジを追加。キーは「アイテムID/videos/vNNN.mp4」で
   `studio_new_video_ids` に保持し、動画ストリップのカードに表示、handleVideoClick で解除。
+- 未確認の新規動画を持つ画像のグリッドカードに「🎞 NEW」（琥珀色 #ffb74d）を表示。
+  画像自体の NEW（青）と色で区別。hasNewVideo / pruneNewVideos を追加し、
+  動画クリック（handleVideoClick / open-library-item）で解除時に renderGrid、
+  selectItem・動画一括削除時に削除済み動画のキーを掃除。
+- スニペット項目のファイル間移動（項目一覧 → ファイル一覧へのドラッグ＆ドロップ）を追加。
+  moveEntryToFile は移動先へ追記保存 → 元ファイルから削除保存の順（元ファイルの未保存編集も一緒に確定）。
+  移動先の JSON が不正な場合はエラー表示で中断し、元ファイルは変更されない。JSON 編集モード中はドラッグ無効。
 - シーケンスのノード右クリックメニューを追加（sequence.js 内で .context-menu を再利用）。
   「ライブラリの元動画を表示」は `open-library-item` カスタムイベントで app.js に通知し、
   app.js 側でタブ切替 → フォルダ/アイテム選択 → 動画プロパティ表示まで行う（モジュール間は疎結合）。
