@@ -217,3 +217,23 @@ def delete_file(rel_path: str) -> None:
     if not path.is_file():
         raise SnippetError("ファイルが見つかりません")
     path.unlink()
+
+
+def rename_file(rel_path: str, new_rel_path: str) -> str:
+    """ファイル名（サブフォルダ含む相対パス）を変更し、新しい相対パスを返す。"""
+    src = _resolve(rel_path)
+    if not src.is_file():
+        raise SnippetError("ファイルが見つかりません")
+    new_rel_path = (new_rel_path or "").strip()
+    if not new_rel_path:
+        raise SnippetError("新しいファイル名が指定されていません")
+    if not new_rel_path.endswith(".code-snippets"):
+        new_rel_path += ".code-snippets"
+    dst = _resolve(new_rel_path)
+    if dst == src:
+        raise SnippetError("ファイル名が変わっていません")
+    if dst.exists():
+        raise SnippetError("同名のファイルが既にあります")
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    src.rename(dst)
+    return str(dst.relative_to(snippets_dir())).replace("\\", "/")

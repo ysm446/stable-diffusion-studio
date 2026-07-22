@@ -94,3 +94,13 @@ def create_file(body: FileCreate) -> dict[str, str]:
 def delete_file(path: str) -> dict[str, bool]:
     _wrap(snippets.delete_file, path)
     return {"ok": True}
+
+
+class FileRename(BaseModel):
+    path: str
+    new_path: str
+
+
+@router.post("/file/rename")
+def rename_file(body: FileRename) -> dict[str, str]:
+    return {"path": _wrap(snippets.rename_file, body.path, body.new_path)}

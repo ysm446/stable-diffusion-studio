@@ -181,6 +181,10 @@ function renderFiles() {
     count.textContent = String(f.count);
     row.append(label, count);
     row.addEventListener("click", () => selectFile(f.path));
+    row.addEventListener("contextmenu", (e) => {
+      e.preventDefault();
+      showFileMenu(e.clientX, e.clientY, f.path);
+    });
     // 項目ドラッグの移動先（編集中のファイル自身は除く）
     row.addEventListener("dragover", (e) => {
       if (entryDragIndex === null || f.path === snipState.current) return;
@@ -196,6 +200,85 @@ function renderFiles() {
       moveEntryToFile(entryDragIndex, f.path);
     });
     el.appendChild(row);
+  }
+}
+
+// ファイルの右クリックメニュー ------------------------------------------------
+
+let fileMenuEl = null;
+
+function hideFileMenu() {
+  if (fileMenuEl) {
+    fileMenuEl.remove();
+    fileMenuEl = null;
+  }
+}
+
+function showFileMenu(x, y, path) {
+  hideFileMenu();
+  const menu = document.createElement("div");
+  menu.className = "context-menu";
+  const entries = [
+    { label: "✏ 名前を変更", action: () => renameFile(path) },
+    { label: "🗑 削除", danger: true, action: () => deleteFileByPath(path) },
+  ];
+  for (const entry of entries) {
+    const item = document.createElement("button");
+    item.className = "context-menu-item" + (entry.danger ? " danger" : "");
+    item.textContent = entry.label;
+    item.addEventListener("click", () => {
+      hideFileMenu();
+      entry.action();
+    });
+    menu.appendChild(item);
+  }
+  document.body.appendChild(menu);
+  // 画面からはみ出さない位置に調整
+  const rect = menu.getBoundingClientRect();
+  menu.style.left = `${Math.min(x, window.innerWidth - rect.width - 4)}px`;
+  menu.style.top = `${Math.min(y, window.innerHeight - rect.height - 4)}px`;
+  fileMenuEl = menu;
+}
+
+document.addEventListener("click", hideFileMenu);
+window.addEventListener("blur", hideFileMenu);
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") hideFileMenu();
+});
+
+async function renameFile(path) {
+  const base = path.replace(/\.code-snippets$/, "");
+  const name = await showInputDialog("新しいファイル名:", base);
+  if (name === null || !name.trim() || name.trim() === base) return;
+  try {
+    const res = await apiJson("/api/snippets/file/rename", "POST", {
+      path,
+      new_path: name.trim(),
+    });
+    if (path === snipState.current) {
+      snipState.current = res.path;
+      $("#snip-editing").textContent = res.path;
+    }
+    snippetsChanged();
+    await loadFiles();
+    setStatus(`「${res.path}」に変更しました`);
+  } catch (e) {
+    setStatus(`リネームエラー: ${e.message}`);
+  }
+}
+
+async function deleteFileByPath(path) {
+  if (!path) return;
+  if (!confirm(`スニペットファイル「${path}」を削除しますか？`)) return;
+  try {
+    await api(`/api/snippets/file?path=${encodeURIComponent(path)}`, { method: "DELETE" });
+    if (path === snipState.current) clearSelection();
+    snippetsChanged();
+    await loadFiles();
+    renderEntries();
+    setStatus(`「${path}」を削除しました`);
+  } catch (e) {
+    setStatus(e.message);
   }
 }
 
@@ -545,21 +628,7 @@ export function initSnippetsView() {
     }
   });
 
-  $("#btn-snip-delete").addEventListener("click", async () => {
-    if (!snipState.current) return;
-    if (!confirm(`スニペットファイル「${snipState.current}」を削除しますか？`)) return;
-    try {
-      await api(`/api/snippets/file?path=${encodeURIComponent(snipState.current)}`, {
-        method: "DELETE",
-      });
-      clearSelection();
-      snippetsChanged();
-      await loadFiles();
-      renderEntries();
-    } catch (e) {
-      setStatus(e.message);
-    }
-  });
+  $("#btn-snip-delete").addEventListener("click", () => deleteFileByPath(snipState.current));
 
   $("#btn-snip-root").addEventListener("click", async () => {
     const cur = await api("/api/snippets/root").catch(() => ({}));
