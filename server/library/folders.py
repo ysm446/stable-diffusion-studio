@@ -76,8 +76,13 @@ def rename_folder(rel: str, new_name: str) -> str:
     src = paths.resolve_rel(rel)
     if not src.is_dir() or paths.is_item_dir(src):
         raise FolderError(f"folder not found: {rel!r}")
+    if new_name == src.name:
+        return rel
     dest = src.parent / new_name
-    if dest.exists():
+    # Windows は大文字小文字を区別しないため、大文字小文字だけの変更では
+    # dest が自分自身を指して exists() が真になる。同一フォルダなら許可する。
+    case_only = dest.exists() and dest.samefile(src)
+    if dest.exists() and not case_only:
         raise FolderError(f"folder already exists: {new_name!r}")
     _retry_fs(lambda: src.rename(dest))
     parent_rel = "/".join(rel.split("/")[:-1])
