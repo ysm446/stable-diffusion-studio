@@ -424,13 +424,39 @@ function markVideoNew(itemId, file) {
 }
 
 function markVideoSeen(itemId, file) {
-  if (newVideoIds.delete(`${itemId}/${file}`)) persistNewSet(NEW_VIDEOS_KEY, newVideoIds);
+  const removed = newVideoIds.delete(`${itemId}/${file}`);
+  if (removed) persistNewSet(NEW_VIDEOS_KEY, newVideoIds);
+  return removed;
 }
 
-function makeNewBadge() {
+// 未確認の新規動画を持つ画像か（グリッドカードの NEW 表示用）
+function hasNewVideo(itemId) {
+  const prefix = `${itemId}/`;
+  for (const key of newVideoIds) {
+    if (key.startsWith(prefix)) return true;
+  }
+  return false;
+}
+
+// 削除された動画の NEW キーを掃除する（アイテムの動画一覧が分かったとき）
+function pruneNewVideos(item) {
+  if (!item?.id) return;
+  const files = new Set((item.videos || []).map((v) => `${item.id}/${v.file}`));
+  let changed = false;
+  for (const key of [...newVideoIds]) {
+    if (key.startsWith(`${item.id}/`) && !files.has(key)) {
+      newVideoIds.delete(key);
+      changed = true;
+    }
+  }
+  if (changed) persistNewSet(NEW_VIDEOS_KEY, newVideoIds);
+}
+
+// NEW バッジ。video=true は動画由来（琥珀色・🎞 付き）
+function makeNewBadge(video = false) {
   const nb = document.createElement("span");
-  nb.className = "new-badge";
-  nb.textContent = "NEW";
+  nb.className = "new-badge" + (video ? " video" : "");
+  nb.textContent = video ? "🎞 NEW" : "NEW";
   return nb;
 }
 
@@ -518,6 +544,10 @@ function renderGrid() {
     if (newItemIds.has(item.id)) {
       card.classList.add("is-new");
       card.appendChild(makeNewBadge());
+    } else if (hasNewVideo(item.id)) {
+      // 未確認の新規動画がある画像にも NEW（動画側をクリックすると消える）
+      card.classList.add("is-new-video");
+      card.appendChild(makeNewBadge(true));
     }
 
     const caption = document.createElement("div");
@@ -636,6 +666,7 @@ async function selectItem(itemId) {
   state.videoAnchorIndex = null;
   state.videoPanel = false;
   state.currentItem = await run(() => api(`/api/library/items/${itemId}`));
+  pruneNewVideos(state.currentItem); // 削除済み動画の NEW を掃除してから描画
   updateHash();
   renderGrid();
   renderVideoStrip();
@@ -685,7 +716,7 @@ function renderVideoStrip() {
     card.appendChild(label);
     if (newVideoIds.has(`${item.id}/${v.file}`)) {
       card.classList.add("is-new");
-      card.appendChild(makeNewBadge());
+      card.appendChild(makeNewBadge(true));
     }
     card.addEventListener("click", (e) => handleVideoClick(v.file, index, e));
     list.appendChild(card);
@@ -694,7 +725,8 @@ function renderVideoStrip() {
 
 // 動画ストリップのクリック（修飾キーで複数選択）
 async function handleVideoClick(file, index, e) {
-  markVideoSeen(state.currentItem?.id ?? state.selectedId, file); // クリックで NEW 解除
+  // クリックで NEW 解除（画像カード側の 🎞 NEW も消えるようグリッドを更新）
+  if (markVideoSeen(state.currentItem?.id ?? state.selectedId, file)) renderGrid();
   // 動画生成パネル表示中でも、動画をクリックしたらそのプロパティ表示へ切り替える
   // （renderContext では videoPanel が selectedVideoFile より優先されるため）
   if (state.videoPanel) {
@@ -730,6 +762,7 @@ async function bulkDeleteVideos(itemId, files) {
     state.selectedVideoFiles = new Set();
     state.selectedVideoFile = null;
     state.currentItem = res;
+    pruneNewVideos(res);
     renderVideoStrip();
     await renderContext();
     await loadItems();
@@ -2650,7 +2683,7 @@ window.addEventListener("open-library-item", async (e) => {
   await selectItem(itemId);
   const hasVideo = file && (item.videos || []).some((v) => v.file === file);
   if (hasVideo) {
-    markVideoSeen(itemId, file);
+    if (markVideoSeen(itemId, file)) renderGrid();
     state.selectedVideoFile = file;
     state.selectedVideoFiles = new Set([file]);
     renderVideoStrip();

@@ -455,9 +455,11 @@ body {
   text-overflow: ellipsis;
 }
 
-/* 新規生成されてまだクリックされていないカードの NEW 表示（画像 / 動画共通） */
-.card.is-new,
-.vstrip-card.is-new { border-color: var(--accent); }
+/* 新規生成されてまだクリックされていないカードの NEW 表示。
+   画像 NEW はアクセント青、動画由来（🎞 NEW）は琥珀色で区別する */
+.card.is-new { border-color: var(--accent); }
+.card.is-new-video,
+.vstrip-card.is-new { border-color: #ffb74d; }
 
 .card .new-badge,
 .vstrip-card .new-badge {
@@ -478,6 +480,11 @@ body {
 @keyframes new-badge-pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.55; }
+}
+
+.new-badge.video {
+  background: #ffb74d;
+  color: #3a2510;
 }
 
 /* --------------------------------------------------------------- context */
