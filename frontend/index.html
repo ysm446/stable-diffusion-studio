@@ -18,8 +18,7 @@
       <div class="topbar-actions">
         <div id="service-status" class="service-status" title="バックエンドの起動状態（クリックで再確認）"></div>
         <button type="button" id="btn-queue" title="生成キュー" hidden data-icon="clock"> キュー</button>
-        <button type="button" id="btn-embed" title="ベクトル検索用の embedding を差分更新する（embedding サーバーを起動します）">Embedding 更新</button>
-        <button type="button" id="btn-reindex" title="全フォルダを走査してインデックスを作り直す">インデックス再構築</button>
+        <button type="button" id="btn-settings" title="設定" data-icon="settings"></button>
       </div>
     </header>
 
@@ -32,6 +31,49 @@
         </div>
       </div>
       <div id="queue-list" class="queue-list"></div>
+    </div>
+
+    <div id="settings-panel" class="settings-panel" hidden>
+      <div class="settings-head">
+        <span>設定</span>
+        <button type="button" id="btn-settings-close" data-icon="x"></button>
+      </div>
+      <div class="settings-body">
+        <div class="settings-section">
+          <div class="settings-section-title">ライブラリ</div>
+          <div class="settings-row">
+            <div class="settings-row-main">
+              <span class="settings-label">保存先フォルダ</span>
+              <span id="settings-root-path" class="settings-value"></span>
+            </div>
+            <div class="settings-row-actions">
+              <button type="button" id="btn-root-change" data-icon="folder-open"> 変更</button>
+              <button type="button" id="btn-root-reset" title="既定の data/library に戻す">既定に戻す</button>
+            </div>
+          </div>
+          <div class="settings-row">
+            <div class="settings-row-main">
+              <span class="settings-label">インデックス再構築</span>
+              <span class="settings-desc">全フォルダを走査してインデックスを作り直します</span>
+            </div>
+            <div class="settings-row-actions">
+              <button type="button" id="btn-reindex" data-icon="restore"> 実行</button>
+            </div>
+          </div>
+        </div>
+        <div class="settings-section">
+          <div class="settings-section-title">検索</div>
+          <div class="settings-row">
+            <div class="settings-row-main">
+              <span class="settings-label">Embedding 更新</span>
+              <span class="settings-desc">ベクトル検索用の embedding を差分更新します（embedding サーバーを起動）</span>
+            </div>
+            <div class="settings-row-actions">
+              <button type="button" id="btn-embed" data-icon="sparkles"> 実行</button>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
 
     <main class="panes" id="view-library">

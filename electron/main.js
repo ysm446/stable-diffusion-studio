@@ -49,8 +49,10 @@ function waitForServer(retries = 60) {
 
 function createWindow() {
   mainWindow = new BrowserWindow({
-    width: 1600,
-    height: 1200,
+    // コンテンツ領域（Web ページの表示領域）が 1920x1080 になるようにする
+    width: 1920,
+    height: 1080,
+    useContentSize: true,
     minWidth: 900,
     minHeight: 600,
     title: 'Stable Diffusion Studio',

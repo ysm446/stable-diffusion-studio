@@ -2587,6 +2587,11 @@ async function loadRoot() {
     state.rootInfo = res;
     $("#root-path").textContent = res.root;
     $("#root-path").title = `ライブラリの保存先: ${res.root}`;
+    const settingsPath = $("#settings-root-path");
+    if (settingsPath) {
+      settingsPath.textContent = res.root;
+      settingsPath.title = res.root;
+    }
     if (state.tree) renderTree();
     return res;
   } catch {
@@ -2594,10 +2599,10 @@ async function loadRoot() {
   }
 }
 
-$("#btn-root").addEventListener("click", async (e) => {
+async function changeLibraryRoot(reset = false) {
   const current = await loadRoot();
   let path;
-  if (e.shiftKey) {
+  if (reset) {
     if (!confirm(`ライブラリの保存先を既定（${current?.default || "data/library"}）に戻しますか？`)) return;
     path = "";
   } else if (window.electronAPI?.selectFolder) {
@@ -2613,7 +2618,11 @@ $("#btn-root").addEventListener("click", async (e) => {
     await selectFolder("");
     setStatus(`ライブラリの保存先を変更しました: ${res.root}（${res.indexed} 件をインデックス）`);
   });
-});
+}
+
+$("#btn-root").addEventListener("click", (e) => changeLibraryRoot(e.shiftKey));
+$("#btn-root-change").addEventListener("click", () => changeLibraryRoot(false));
+$("#btn-root-reset").addEventListener("click", () => changeLibraryRoot(true));
 
 $("#btn-embed").addEventListener("click", async () => {
   const btn = $("#btn-embed");
@@ -2664,6 +2673,22 @@ for (const tab of document.querySelectorAll(".topbar-tab")) {
 
 initSequenceView();
 initSnippetsView();
+
+// 設定パネルの開閉
+$("#btn-settings").addEventListener("click", () => {
+  const panel = $("#settings-panel");
+  panel.hidden = !panel.hidden;
+});
+$("#btn-settings-close").addEventListener("click", () => {
+  $("#settings-panel").hidden = true;
+});
+// パネルの外側クリックで閉じる（歯車ボタン自体のクリックはトグルに任せる）
+document.addEventListener("click", (e) => {
+  const panel = $("#settings-panel");
+  if (!panel.hidden && !e.target.closest("#settings-panel, #btn-settings")) {
+    panel.hidden = true;
+  }
+});
 
 // 生成キューのパネル開閉
 $("#btn-queue").addEventListener("click", () => {

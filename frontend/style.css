@@ -155,6 +155,83 @@ body {
 }
 .queue-item button { flex: none; padding: 0 6px; font-size: 11px; }
 
+/* 設定パネル */
+.settings-panel[hidden] { display: none; }
+.settings-panel {
+  position: absolute;
+  top: 40px;
+  right: 8px;
+  z-index: 900;
+  width: 420px;
+  max-height: 70vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-pane);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+}
+
+.settings-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+}
+.settings-head button { padding: 2px 8px; font-size: 11px; }
+
+.settings-body {
+  overflow: auto;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.settings-section-title {
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-bottom: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.settings-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 0;
+}
+.settings-row + .settings-row { border-top: 1px solid var(--border); }
+
+.settings-row-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.settings-label { font-size: 12px; }
+
+.settings-desc,
+.settings-value {
+  font-size: 11px;
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-row-actions {
+  flex: none;
+  display: flex;
+  gap: 6px;
+}
+.settings-row-actions button { font-size: 11px; padding: 3px 10px; white-space: nowrap; }
+
 .service-status {
   display: flex;
   align-items: center;
