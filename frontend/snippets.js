@@ -5,6 +5,7 @@
  */
 
 import { showInputDialog } from "/frontend/dialog.js";
+import { setIconLabel } from "/frontend/icons.js";
 
 const $ = (sel) => document.querySelector(sel);
 
@@ -127,7 +128,8 @@ function updateEditorView() {
   $("#snip-editor").hidden = showForm;
   const jsonBtn = $("#btn-snip-json");
   jsonBtn.hidden = !hasFile;
-  jsonBtn.textContent = snipState.jsonMode ? "📝 フォーム編集" : "{ } JSON 編集";
+  if (snipState.jsonMode) setIconLabel(jsonBtn, "file-text", "フォーム編集");
+  else jsonBtn.textContent = "{ } JSON 編集";
   jsonBtn.title = snipState.jsonMode
     ? "フォーム編集に戻る（JSON を解析します）"
     : "生の JSON を直接編集する";
@@ -174,7 +176,7 @@ function renderFiles() {
     if (f.path === snipState.current) row.classList.add("is-selected");
     const label = document.createElement("span");
     label.className = "palette-tree-label";
-    label.textContent = `📄 ${f.path}`;
+    setIconLabel(label, "file", f.path);
     label.title = f.path;
     const count = document.createElement("span");
     count.className = "count";
@@ -219,13 +221,13 @@ function showFileMenu(x, y, path) {
   const menu = document.createElement("div");
   menu.className = "context-menu";
   const entries = [
-    { label: "✏ 名前を変更", action: () => renameFile(path) },
-    { label: "🗑 削除", danger: true, action: () => deleteFileByPath(path) },
+    { icon: "pencil", label: "名前を変更", action: () => renameFile(path) },
+    { icon: "trash", label: "削除", danger: true, action: () => deleteFileByPath(path) },
   ];
   for (const entry of entries) {
     const item = document.createElement("button");
     item.className = "context-menu-item" + (entry.danger ? " danger" : "");
-    item.textContent = entry.label;
+    setIconLabel(item, entry.icon, entry.label);
     item.addEventListener("click", () => {
       hideFileMenu();
       entry.action();

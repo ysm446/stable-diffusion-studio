@@ -7,6 +7,9 @@ import { initSequenceView, activateSequenceView } from "/frontend/sequence.js";
 import { initSnippetsView, activateSnippetsView } from "/frontend/snippets.js";
 import { attachSnippetAutocomplete } from "/frontend/snippet-autocomplete.js";
 import { showInputDialog } from "/frontend/dialog.js";
+import { iconSvg, setIconLabel, applyStaticIcons } from "/frontend/icons.js";
+
+applyStaticIcons();
 
 const state = {
   tree: null,
@@ -72,14 +75,14 @@ function seedField(labelText, obj, getLast) {
     obj.seed = Number.isNaN(n) ? -1 : n;
   });
   const dice = document.createElement("button");
-  dice.textContent = "🎲";
+  setIconLabel(dice, "dice");
   dice.title = "ランダム（-1）";
   dice.addEventListener("click", () => {
     obj.seed = -1;
     input.value = -1;
   });
   const restore = document.createElement("button");
-  restore.textContent = "♻";
+  setIconLabel(restore, "restore");
   restore.title = "直近に使ったシードに戻す";
   restore.addEventListener("click", () => {
     const last = getLast();
@@ -176,7 +179,7 @@ function buildTreeList(node, isRoot) {
   if (state.folder === node.rel) row.classList.add("is-selected");
 
   const label = document.createElement("span");
-  label.textContent = isRoot ? `📚 ${rootName()}` : `📁 ${node.name}`;
+  setIconLabel(label, isRoot ? "library" : "folder", isRoot ? rootName() : node.name);
   if (isRoot) label.title = state.rootInfo?.root || "";
   row.appendChild(label);
 
@@ -193,22 +196,26 @@ function buildTreeList(node, isRoot) {
     if (state.folder !== node.rel) selectFolder(node.rel);
     const entries = [
       {
-        label: "📁 新規フォルダ（この中に）",
+        icon: "folder",
+        label: "新規フォルダ（この中に）",
         action: () => createFolderIn(node.rel),
       },
       {
-        label: "📂 エクスプローラーで開く",
+        icon: "folder-open",
+        label: "エクスプローラーで開く",
         action: () => revealFolder(node.rel),
       },
     ];
     if (!isRoot) {
       entries.push(
         {
-          label: "✎ 名前の変更",
+          icon: "pencil",
+          label: "名前の変更",
           action: () => renameFolderRel(node.rel),
         },
         {
-          label: "🗑 削除",
+          icon: "trash",
+          label: "削除",
           danger: true,
           action: () => deleteFolderRel(node.rel),
         }
@@ -456,7 +463,8 @@ function pruneNewVideos(item) {
 function makeNewBadge(video = false) {
   const nb = document.createElement("span");
   nb.className = "new-badge" + (video ? " video" : "");
-  nb.textContent = video ? "🎞 NEW" : "NEW";
+  if (video) setIconLabel(nb, "film", "NEW");
+  else nb.textContent = "NEW";
   return nb;
 }
 
@@ -537,7 +545,7 @@ function renderGrid() {
     if (item.video_count > 0) {
       const badge = document.createElement("span");
       badge.className = "badge";
-      badge.textContent = `🎞 ${item.video_count}`;
+      setIconLabel(badge, "film", String(item.video_count));
       card.appendChild(badge);
     }
 
@@ -569,22 +577,25 @@ function renderGrid() {
       if (multi) {
         const ids = [...state.selectedIds];
         entries.push({
-          label: `🗑 選択した ${ids.length} 件を削除`,
+          icon: "trash",
+          label: `選択した ${ids.length} 件を削除`,
           danger: true,
           action: () => bulkDelete(ids),
         });
       } else {
         entries.push(
           {
-            label: "✨ この設定で新規生成",
+            icon: "sparkles",
+            label: "この設定で新規生成",
             action: async () => {
               const full = await run(() => api(`/api/library/items/${item.id}`));
               if (full) useItemForGeneration(full);
             },
           },
-          { label: "📂 ファイルの場所を開く", action: () => revealItem(item.id) },
+          { icon: "folder-open", label: "ファイルの場所を開く", action: () => revealItem(item.id) },
           {
-            label: "🎞 動画を生成...",
+            icon: "film",
+            label: "動画を生成...",
             action: async () => {
               await selectItem(item.id);
               state.videoPanel = true;
@@ -593,7 +604,8 @@ function renderGrid() {
             },
           },
           {
-            label: "🗑 削除",
+            icon: "trash",
+            label: "削除",
             danger: true,
             action: () => deleteItemById(item.id, item.video_count || 0),
           }
@@ -696,7 +708,7 @@ function renderVideoStrip() {
   if (videos.length === 0) {
     const hint = document.createElement("div");
     hint.className = "vstrip-empty";
-    hint.textContent = "🎞 生成済みの動画ファイルをドロップして登録";
+    setIconLabel(hint, "film", "生成済みの動画ファイルをドロップして登録");
     list.appendChild(hint);
   }
   videos.forEach((v, index) => {
@@ -953,7 +965,8 @@ function showContextMenu(x, y, entries) {
   for (const entry of entries) {
     const item = document.createElement("button");
     item.className = "context-menu-item" + (entry.danger ? " danger" : "");
-    item.textContent = entry.label;
+    if (entry.icon) setIconLabel(item, entry.icon, entry.label);
+    else item.textContent = entry.label;
     item.addEventListener("click", () => {
       hideContextMenu();
       entry.action();
@@ -1175,7 +1188,7 @@ function renderMultiVideoContext(el) {
 
   const delBtn = document.createElement("button");
   delBtn.className = "danger";
-  delBtn.textContent = `🗑 選択した ${files.length} 件の動画を削除`;
+  setIconLabel(delBtn, "trash", `選択した ${files.length} 件の動画を削除`);
   delBtn.addEventListener("click", () => bulkDeleteVideos(state.selectedId, files));
   el.appendChild(delBtn);
 
@@ -1204,7 +1217,7 @@ function renderMultiSelectContext(el) {
 
   const delBtn = document.createElement("button");
   delBtn.className = "danger";
-  delBtn.textContent = `🗑 選択した ${ids.length} 件を削除`;
+  setIconLabel(delBtn, "trash", `選択した ${ids.length} 件を削除`);
   delBtn.addEventListener("click", () => bulkDelete(ids));
   el.appendChild(delBtn);
 
@@ -1460,7 +1473,7 @@ function renderFolderContext(el) {
 
   // スニペット挿入
   const snipBtn = document.createElement("button");
-  snipBtn.textContent = "🧩 スニペットを挿入";
+  setIconLabel(snipBtn, "puzzle", "スニペットを挿入");
   snipBtn.addEventListener("click", () =>
     openSnippetPicker((body) => {
       const cur = promptInput.value.trim();
@@ -1475,7 +1488,7 @@ function renderFolderContext(el) {
 
   // ライブラリの類似プロンプト参照（旧 {library_context} 相当）
   const simBtn = document.createElement("button");
-  simBtn.textContent = "🔍 ライブラリから類似プロンプトを探す";
+  setIconLabel(simBtn, "search", "ライブラリから類似プロンプトを探す");
   const simResults = document.createElement("div");
   simResults.className = "similar-results";
   simBtn.addEventListener("click", async () => {
@@ -1559,7 +1572,7 @@ function renderFolderContext(el) {
 
   const genBtn = document.createElement("button");
   genBtn.className = "primary";
-  genBtn.textContent = "🖼 生成キューに追加";
+  setIconLabel(genBtn, "image", "生成キューに追加");
   genBtn.addEventListener("click", enqueueImage);
   el.appendChild(genBtn);
   el.appendChild(genStatusLine());
@@ -1747,7 +1760,7 @@ function updateQueueUI() {
   const btn = $("#btn-queue");
   btn.hidden = state.queue.length === 0;
   const running = state.queue.some((j) => j.status === "running");
-  btn.textContent = active > 0 ? `⏳ キュー ${active}` : "⏳ キュー";
+  setIconLabel(btn, "clock", active > 0 ? `キュー ${active}` : "キュー");
   btn.classList.toggle("is-running", running);
   renderQueue();
 }
@@ -1760,13 +1773,13 @@ function renderQueue() {
     list.innerHTML = '<p class="queue-empty">キューは空です</p>';
     return;
   }
-  const icons = { pending: "⏳", running: "▶", done: "✅", error: "⚠" };
+  const icons = { pending: "clock", running: "play", done: "check", error: "alert" };
   for (const job of state.queue) {
     const row = document.createElement("div");
     row.className = `queue-item is-${job.status}`;
     const icon = document.createElement("span");
     icon.className = "queue-icon";
-    icon.textContent = icons[job.status] || "";
+    icon.innerHTML = icons[job.status] ? iconSvg(icons[job.status]) : "";
     const label = document.createElement("span");
     label.className = "queue-label";
     label.textContent = job.label;
@@ -1774,7 +1787,7 @@ function renderQueue() {
     row.append(icon, label);
     if (job.status === "pending") {
       const rm = document.createElement("button");
-      rm.textContent = "✕";
+      setIconLabel(rm, "x");
       rm.title = "キューから削除";
       rm.addEventListener("click", () => {
         state.queue = state.queue.filter((j) => j.id !== job.id);
@@ -1860,12 +1873,12 @@ function renderVideoGenContext(el, item) {
 
   const genBtn = document.createElement("button");
   genBtn.className = "primary";
-  genBtn.textContent = "🎞 動画生成をキューに追加";
+  setIconLabel(genBtn, "film", "動画生成をキューに追加");
   genBtn.addEventListener("click", () => enqueueVideo(item.id, item.prompt || item.id));
   el.appendChild(genBtn);
 
   const saveSettingsBtn = document.createElement("button");
-  saveSettingsBtn.textContent = "💾 この設定を保存（生成せず）";
+  setIconLabel(saveSettingsBtn, "save", "この設定を保存（生成せず）");
   saveSettingsBtn.title = "追加指示・プロンプト等を画像に保存します（次回この画像を開くと復元されます）";
   saveSettingsBtn.addEventListener("click", async () => {
     await run(async () => {
@@ -1877,7 +1890,7 @@ function renderVideoGenContext(el, item) {
   el.appendChild(saveSettingsBtn);
 
   const backBtn = document.createElement("button");
-  backBtn.textContent = "← 画像詳細に戻る";
+  setIconLabel(backBtn, "arrow-left", "画像詳細に戻る");
   backBtn.addEventListener("click", async () => {
     state.videoPanel = false;
     updateHash();
@@ -1896,7 +1909,7 @@ function buildLlmPromptBox(itemId, s, promptField, onText) {
 
   const llmHead = document.createElement("div");
   llmHead.className = "llm-head";
-  llmHead.textContent = "🤖 LLM で動画プロンプトを生成";
+  setIconLabel(llmHead, "bot", "LLM で動画プロンプトを生成");
   llmBox.appendChild(llmHead);
 
   llmBox.appendChild(
@@ -1985,7 +1998,7 @@ function buildLlmPromptBox(itemId, s, promptField, onText) {
 
   const genPromptBtn = document.createElement("button");
   genPromptBtn.className = "primary";
-  genPromptBtn.textContent = "✨ 動画プロンプトを生成";
+  setIconLabel(genPromptBtn, "sparkles", "動画プロンプトを生成");
   genPromptBtn.addEventListener("click", () =>
     generateVideoPrompt(genPromptBtn, itemId, promptField, s, onText)
   );
@@ -2052,7 +2065,7 @@ async function generateVideoPrompt(btn, itemId, promptField, s, onText) {
     setGenStatus(`生成エラー: ${e.message}`, true);
   } finally {
     btn.disabled = false;
-    btn.textContent = "✨ 動画プロンプトを生成";
+    setIconLabel(btn, "sparkles", "動画プロンプトを生成");
   }
 }
 
@@ -2213,7 +2226,7 @@ function renderItemContext(el, item) {
   btnRow.className = "row";
 
   const saveBtn = document.createElement("button");
-  saveBtn.textContent = "💾 保存";
+  setIconLabel(saveBtn, "save", "保存");
   saveBtn.title = "編集した内容をこの画像に保存します（生成はしません）";
   saveBtn.addEventListener("click", async () => {
     const patch = {
@@ -2233,7 +2246,7 @@ function renderItemContext(el, item) {
 
   const genBtn = document.createElement("button");
   genBtn.className = "primary";
-  genBtn.textContent = "🖼 新規生成でキューに追加";
+  setIconLabel(genBtn, "image", "新規生成でキューに追加");
   genBtn.title = "この内容で新しい画像を生成します（この画像は変更されません）";
   genBtn.addEventListener("click", () => {
     enqueueImageJob(item.folder ?? state.folder ?? "", {
@@ -2259,7 +2272,7 @@ function renderItemContext(el, item) {
   const genVideoBtn = document.createElement("button");
   genVideoBtn.className = "primary";
   const vcount = (item.videos || []).length;
-  genVideoBtn.textContent = vcount > 0 ? `🎞 動画を生成...（${vcount}件は下に表示）` : "🎞 動画を生成...";
+  setIconLabel(genVideoBtn, "film", vcount > 0 ? `動画を生成...（${vcount}件は下に表示）` : "動画を生成...");
   genVideoBtn.addEventListener("click", async () => {
     state.videoPanel = true;
     updateHash();
@@ -2269,13 +2282,13 @@ function renderItemContext(el, item) {
 
   // ファイル操作
   const revealBtn = document.createElement("button");
-  revealBtn.textContent = "📂 ファイルの場所を開く";
+  setIconLabel(revealBtn, "folder-open", "ファイルの場所を開く");
   revealBtn.addEventListener("click", () => revealItem(item.id));
   el.appendChild(revealBtn);
 
   const delBtn = document.createElement("button");
   delBtn.className = "danger";
-  delBtn.textContent = "🗑 画像を削除";
+  setIconLabel(delBtn, "trash", "画像を削除");
   delBtn.addEventListener("click", () =>
     deleteItemById(item.id, (item.videos || []).length)
   );
@@ -2289,7 +2302,7 @@ function renderVideoPropsContext(el, item, v) {
   el.appendChild(h);
 
   const back = document.createElement("button");
-  back.textContent = "← 画像のプロパティに戻る";
+  setIconLabel(back, "arrow-left", "画像のプロパティに戻る");
   back.addEventListener("click", async () => {
     state.selectedVideoFile = null;
     renderVideoStrip();
@@ -2366,7 +2379,7 @@ function renderVideoPropsContext(el, item, v) {
   btnRow.className = "row";
 
   const saveBtn = document.createElement("button");
-  saveBtn.textContent = "💾 保存";
+  setIconLabel(saveBtn, "save", "保存");
   saveBtn.title = "編集した内容をこの動画に保存します（生成はしません）";
   saveBtn.addEventListener("click", async () => {
     const name = v.file.split("/").pop();
@@ -2382,7 +2395,7 @@ function renderVideoPropsContext(el, item, v) {
 
   const genBtn = document.createElement("button");
   genBtn.className = "primary";
-  genBtn.textContent = "🎞 新規生成でキューに追加";
+  setIconLabel(genBtn, "film", "新規生成でキューに追加");
   genBtn.title = "この内容で新しい動画を生成します（この動画は変更されません）";
   genBtn.addEventListener("click", () => {
     enqueueVideoJob(item.id, buildSettings(), (d.prompt || item.id).slice(0, 24));
@@ -2394,7 +2407,7 @@ function renderVideoPropsContext(el, item, v) {
 
   const del = document.createElement("button");
   del.className = "danger";
-  del.textContent = "🗑 この動画を削除";
+  setIconLabel(del, "trash", "この動画を削除");
   del.addEventListener("click", async () => {
     if (!confirm(`動画 ${v.file} を削除しますか？`)) return;
     const name = v.file.split("/").pop();

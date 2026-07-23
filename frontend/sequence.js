@@ -7,6 +7,7 @@
  */
 
 import { showInputDialog } from "/frontend/dialog.js";
+import { iconSvg, setIconLabel } from "/frontend/icons.js";
 
 const $ = (sel) => document.querySelector(sel);
 
@@ -116,7 +117,7 @@ function renderList() {
     row.className = "tree-node";
     if (s.id === seqState.currentId) row.classList.add("is-selected");
     const label = document.createElement("span");
-    label.textContent = `🎬 ${s.name}`;
+    setIconLabel(label, "clapper", s.name);
     const count = document.createElement("span");
     count.className = "count";
     count.textContent = String(s.clip_count);
@@ -126,7 +127,7 @@ function renderList() {
     save.type = "button";
     save.className = "seq-save";
     save.title = "シーケンスを保存";
-    save.textContent = "💾";
+    setIconLabel(save, "save");
     if (s.id === seqState.currentId) {
       save.id = "btn-seq-save";
       save.disabled = !seqState.dirty;
@@ -350,7 +351,7 @@ function renderGraph() {
     thumb.className = "seq-node-thumb";
     if (node.missing) {
       thumb.innerHTML =
-        '<div class="seq-node-missing"><span class="seq-node-missing-icon">⚠</span>元の画像/動画が<br>削除されています</div>';
+        `<div class="seq-node-missing"><span class="seq-node-missing-icon">${iconSvg("alert")}</span>元の画像/動画が<br>削除されています</div>`;
       el.title = `参照切れ: ${node.item_id}/${node.file}`;
     } else {
       const img = document.createElement("img");
@@ -378,7 +379,7 @@ function renderGraph() {
     // 削除ボタン
     const rm = document.createElement("button");
     rm.className = "seq-node-remove";
-    rm.textContent = "✕";
+    setIconLabel(rm, "x");
     rm.title = "ノードを削除";
     rm.addEventListener("mousedown", (e) => e.stopPropagation());
     rm.addEventListener("click", (e) => {
@@ -417,7 +418,7 @@ function showNodeMenu(x, y, node) {
 
   const jump = document.createElement("button");
   jump.className = "context-menu-item";
-  jump.textContent = "📚 ライブラリの元動画を表示";
+  setIconLabel(jump, "library", "ライブラリの元動画を表示");
   jump.title = `${node.item_id}/${node.file}`;
   jump.addEventListener("click", () => {
     hideNodeMenu();
@@ -432,7 +433,7 @@ function showNodeMenu(x, y, node) {
 
   const del = document.createElement("button");
   del.className = "context-menu-item danger";
-  del.textContent = "🗑 ノードを削除";
+  setIconLabel(del, "trash", "ノードを削除");
   del.addEventListener("click", () => {
     hideNodeMenu();
     removeNode(node.id);
@@ -912,7 +913,7 @@ function stopPlayback() {
 
 function setPlayToggle(playing) {
   const btn = $("#seq-play-toggle");
-  if (btn) btn.textContent = playing ? "⏸" : "▶";
+  if (btn) setIconLabel(btn, playing ? "pause" : "play");
 }
 
 // BGM を用意（src / volume をセット）。用意できなければ null を返す
@@ -1150,7 +1151,7 @@ function renderBgm() {
 
   const head = document.createElement("div");
   head.className = "seq-bgm-head";
-  head.textContent = "🎵 BGM";
+  setIconLabel(head, "music", "BGM");
   el.appendChild(head);
 
   // このシーケンスの BGM 選択
@@ -1196,7 +1197,7 @@ function renderBgm() {
   const drop = document.createElement("div");
   drop.className = "seq-bgm-drop";
   drop.id = "seq-bgm-drop";
-  drop.textContent = "🎵 mp3 をここにドロップして追加";
+  setIconLabel(drop, "music", "mp3 をここにドロップして追加");
   el.appendChild(drop);
 
   const list = document.createElement("div");
@@ -1206,7 +1207,7 @@ function renderBgm() {
     item.className = "seq-bgm-item";
     const playing = previewName === b.name;
     const play = document.createElement("button");
-    play.textContent = playing ? "⏹" : "▶";
+    setIconLabel(play, playing ? "stop" : "play");
     play.title = playing ? "停止" : "試聴";
     play.addEventListener("click", () => togglePreview(b.name));
     const name = document.createElement("span");
@@ -1215,7 +1216,7 @@ function renderBgm() {
     name.title = b.name;
     const del = document.createElement("button");
     del.className = "danger";
-    del.textContent = "✕";
+    setIconLabel(del, "x");
     del.title = "BGM を削除";
     del.addEventListener("click", async () => {
       if (!confirm(`BGM「${b.name}」を削除しますか？`)) return;
@@ -1374,7 +1375,7 @@ function buildPaletteTree(node, isRoot) {
 
   const toggle = document.createElement("span");
   toggle.className = "palette-tree-toggle";
-  toggle.textContent = hasChildren ? (expanded ? "▼" : "▶") : "";
+  toggle.innerHTML = hasChildren ? iconSvg(expanded ? "chevron-down" : "chevron-right") : "";
   toggle.addEventListener("click", (e) => {
     e.stopPropagation();
     if (!hasChildren) return;
@@ -1386,13 +1387,14 @@ function buildPaletteTree(node, isRoot) {
 
   const label = document.createElement("span");
   label.className = "palette-tree-label";
-  label.textContent = isRoot ? "📚 ライブラリ" : `📁 ${node.name}`;
+  setIconLabel(label, isRoot ? "library" : "folder", isRoot ? "ライブラリ" : node.name);
   row.appendChild(label);
 
   const count = paletteVideoCount(node.rel);
   const badge = document.createElement("span");
   badge.className = "palette-tree-count";
-  badge.textContent = count > 0 ? `🎞 ${count}` : "";
+  if (count > 0) setIconLabel(badge, "film", String(count));
+  else badge.textContent = "";
   row.appendChild(badge);
 
   row.addEventListener("click", () => {

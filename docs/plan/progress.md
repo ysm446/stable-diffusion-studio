@@ -132,6 +132,20 @@ Image Assistant は、初期の Gradio / A1111 想定から、Electron UI + Fast
   チェックボックスは動画生成パネルの Seed と生成ボタンの間。動画プロパティからの再生成にも共通設定が効く。
 - 検証: `node --check`、`parse_entries` のスモークテスト、テスト用サーバー（ポート 8799）＋ヘッドレス Chrome のスクリーンショットで UI を確認。候補メニューはヘッドレスのスクリーンショットでのみ描画されない現象があったが、DOM・ヒットテスト・clone 描画・キー操作での挿入はすべて正常で、ヘッドレス固有のコンポジット問題と判断（実機は Ctrl+R 後に要確認）。
 
+### フラットアイコン化（2026-07-23）
+
+- UI の絵文字アイコンを `frontend/icons.js` のフラット SVG アイコン（ストローク系・
+  currentColor・24 viewBox、Lucide 風）に置き換えた。サイズは CSS `.ico`（1.2em）で
+  フォントサイズに追従する。
+- 使い方: 静的 HTML は `data-icon="name"` ＋ `applyStaticIcons()`（app.js 起動時に実行）。
+  JS 生成要素は `setIconLabel(el, name, text)`（text は textNode なのでエスケープ不要）
+  または `iconSvg(name)`。コンテキストメニューは entries に `icon` フィールドを追加。
+- 対象外: ステータス文言内の ⚠（テキストメッセージ）、→ / ↑↓ などの文字記号、
+  snippet-autocomplete のキーヒント、コメント内の絵文字。
+- 検証: node --check 全ファイル、テスト用サーバー＋ヘッドレス Chrome で
+  ライブラリ / シーケンス / スニペット 3 タブのスクリーンショットを確認。
+  Ctrl+R で反映可能（フロントのみの変更）。
+
 ### サービス状態インジケーターの遷移表示（2026-07-23）
 
 - `/api/status` の各サービスに `state`（ready / starting / installing / error / off）と

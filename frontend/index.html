@@ -17,7 +17,7 @@
       </div>
       <div class="topbar-actions">
         <div id="service-status" class="service-status" title="バックエンドの起動状態（クリックで再確認）"></div>
-        <button type="button" id="btn-queue" title="生成キュー" hidden>⏳ キュー</button>
+        <button type="button" id="btn-queue" title="生成キュー" hidden data-icon="clock"> キュー</button>
         <button type="button" id="btn-embed" title="ベクトル検索用の embedding を差分更新する（embedding サーバーを起動します）">Embedding 更新</button>
         <button type="button" id="btn-reindex" title="全フォルダを走査してインデックスを作り直す">インデックス再構築</button>
       </div>
@@ -28,7 +28,7 @@
         <span>生成キュー</span>
         <div class="queue-head-actions">
           <button type="button" id="btn-queue-clear" title="完了・エラーを消去">完了を消去</button>
-          <button type="button" id="btn-queue-close">✕</button>
+          <button type="button" id="btn-queue-close" data-icon="x"></button>
         </div>
       </div>
       <div id="queue-list" class="queue-list"></div>
@@ -39,13 +39,13 @@
       <aside class="pane pane-tree">
         <div class="pane-toolbar">
           <button type="button" id="btn-folder-new" title="選択フォルダ内に新規フォルダ">＋</button>
-          <button type="button" id="btn-folder-rename" title="フォルダ名を変更">✎</button>
-          <button type="button" id="btn-folder-delete" title="フォルダを削除">🗑</button>
+          <button type="button" id="btn-folder-rename" title="フォルダ名を変更" data-icon="pencil"></button>
+          <button type="button" id="btn-folder-delete" title="フォルダを削除" data-icon="trash"></button>
         </div>
         <div id="tree" class="tree"></div>
         <div class="root-bar">
           <span id="root-path"></span>
-          <button type="button" id="btn-root" title="ライブラリの保存先フォルダを変更（Shift+クリックで既定の data/library に戻す）">📂</button>
+          <button type="button" id="btn-root" title="ライブラリの保存先フォルダを変更（Shift+クリックで既定の data/library に戻す）" data-icon="folder-open"></button>
         </div>
       </aside>
 
@@ -87,8 +87,8 @@
       <aside class="pane pane-tree">
         <div class="pane-toolbar">
           <button type="button" id="btn-seq-new" title="新しいシーケンス">＋</button>
-          <button type="button" id="btn-seq-rename" title="名前を変更">✎</button>
-          <button type="button" id="btn-seq-delete" title="シーケンスを削除">🗑</button>
+          <button type="button" id="btn-seq-rename" title="名前を変更" data-icon="pencil"></button>
+          <button type="button" id="btn-seq-delete" title="シーケンスを削除" data-icon="trash"></button>
         </div>
         <div id="seq-list" class="tree"></div>
       </aside>
@@ -96,8 +96,8 @@
       <!-- 中央: プレビュー + ノードグラフ -->
       <section class="pane pane-seq-editor">
         <div class="pane-toolbar">
-          <button type="button" id="btn-seq-play" title="順路を先頭から連続再生">▶ 連続再生</button>
-          <button type="button" id="btn-seq-fit" title="全ノードが収まるように表示">⤢ フィット</button>
+          <button type="button" id="btn-seq-play" title="順路を先頭から連続再生" data-icon="play"> 連続再生</button>
+          <button type="button" id="btn-seq-fit" title="全ノードが収まるように表示" data-icon="fit"> フィット</button>
           <button type="button" id="btn-seq-export" class="primary" title="順路を無劣化連結して書き出し">連結書き出し</button>
           <span id="seq-status" class="gen-status"></span>
         </div>
@@ -105,8 +105,8 @@
           <video id="seq-player"></video>
           <!-- プレイヤー枠の内側に置くことで全画面時もシークバーが表示される -->
           <div class="seq-transport">
-            <button type="button" id="seq-play-toggle" title="再生 / 一時停止">▶</button>
-            <button type="button" id="seq-loop-toggle" title="ループ再生">🔁</button>
+            <button type="button" id="seq-play-toggle" title="再生 / 一時停止" data-icon="play"></button>
+            <button type="button" id="seq-loop-toggle" title="ループ再生" data-icon="repeat"></button>
             <span id="seq-time-cur" class="seq-time">0:00</span>
             <div id="seq-seek" class="seq-seek"><div id="seq-seek-fill"></div></div>
             <span id="seq-time-total" class="seq-time">0:00</span>
@@ -137,13 +137,13 @@
       <aside class="pane pane-tree">
         <div class="pane-toolbar">
           <button type="button" id="btn-snip-new" title="新しいスニペットファイル">＋</button>
-          <button type="button" id="btn-snip-delete" title="ファイルを削除">🗑</button>
-          <button type="button" id="btn-snip-reveal" title="スニペットフォルダを開く">📂</button>
+          <button type="button" id="btn-snip-delete" title="ファイルを削除" data-icon="trash"></button>
+          <button type="button" id="btn-snip-reveal" title="スニペットフォルダを開く" data-icon="folder-open"></button>
         </div>
         <div id="snip-files" class="tree"></div>
         <div class="root-bar">
           <span id="snip-root"></span>
-          <button type="button" id="btn-snip-root" title="スニペットフォルダを変更">📁</button>
+          <button type="button" id="btn-snip-root" title="スニペットフォルダを変更" data-icon="folder"></button>
         </div>
       </aside>
 
@@ -159,7 +159,7 @@
         <div class="pane-toolbar">
           <span id="snip-editing" class="snip-editing"></span>
           <button type="button" id="btn-snip-json" hidden>{&nbsp;} JSON 編集</button>
-          <button type="button" id="btn-snip-save" class="primary" disabled>💾 保存</button>
+          <button type="button" id="btn-snip-save" class="primary" disabled data-icon="save"> 保存</button>
         </div>
         <div id="snip-form" class="snip-form" hidden>
           <div class="snip-form-help">
@@ -180,7 +180,7 @@
             <textarea id="snip-f-body" spellcheck="false" placeholder="arms spread"></textarea>
           </label>
           <div class="snip-form-footer">
-            <button type="button" id="btn-snip-del-entry">🗑 この項目を削除</button>
+            <button type="button" id="btn-snip-del-entry" data-icon="trash"> この項目を削除</button>
           </div>
         </div>
         <textarea id="snip-editor" class="snip-editor" spellcheck="false" placeholder="左のファイルを選択してください（VSCode .code-snippets 形式の JSON）"></textarea>
