@@ -102,6 +102,17 @@ def is_ready() -> bool:
         return False
 
 
+def process_state() -> dict[str, Any]:
+    """ステータスバー向けの軽量な状態。HTTP プローブやロック取得をしない。"""
+    proc = _proc
+    return {
+        "process_running": proc is not None and proc.poll() is None,
+        "returncode": None if proc is None else proc.poll(),
+        "error": _last_error,
+        "model": str(_loaded_model_path.name) if _loaded_model_path else None,
+    }
+
+
 def stop() -> str:
     global _proc, _log_fh, _loaded_model_path, _ready, _last_error
     with _lock:

@@ -2427,27 +2427,46 @@ async function reloadCurrentItem() {
 
 let statusPollTimer = null;
 
+const SVC_STATES = {
+  ready: { cls: "is-up", text: "", label: "起動中" },
+  starting: { cls: "is-busy", text: "起動中…", label: "起動中…" },
+  installing: { cls: "is-busy", text: "セットアップ中…", label: "セットアップ中…" },
+  error: { cls: "is-error", text: "エラー", label: "エラー" },
+  off: { cls: "is-down", text: "", label: "停止" },
+};
+
 async function refreshServiceStatus() {
   const container = $("#service-status");
+  let busy = false;
   try {
     const res = await api("/api/status");
     container.innerHTML = "";
     for (const s of res.services) {
+      const state = SVC_STATES[s.state] || (s.ready ? SVC_STATES.ready : SVC_STATES.off);
+      if (s.state === "starting" || s.state === "installing") busy = true;
       const chip = document.createElement("span");
-      chip.className = `svc-chip ${s.ready ? "is-up" : "is-down"}`;
-      chip.innerHTML = `<span class="svc-dot"></span>${s.label}`;
-      chip.title = `${s.label}: ${s.ready ? "起動中" : "停止"} (${s.url})`;
+      chip.className = `svc-chip ${state.cls}`;
+      // 遷移中はサーバーからの詳細（例: モデルをロード中…）を優先して表示する
+      const busyText = s.state === "starting" || s.state === "installing" ? s.detail || state.text : state.text;
+      const stateText = busyText ? `<span class="svc-state">${busyText}</span>` : "";
+      chip.innerHTML = `<span class="svc-dot"></span>${s.label}${stateText}`;
+      chip.title = `${s.label}: ${state.label}${s.detail ? ` — ${s.detail}` : ""} (${s.url})`;
       container.appendChild(chip);
     }
   } catch {
     container.innerHTML = '<span class="svc-chip is-down">状態不明</span>';
   }
+  // 起動・ロードの遷移中は短い間隔で追いかけ、完了したら通常間隔に戻す
+  scheduleStatusPoll(busy ? 1500 : 8000);
+}
+
+function scheduleStatusPoll(delay) {
+  clearTimeout(statusPollTimer);
+  statusPollTimer = setTimeout(refreshServiceStatus, delay);
 }
 
 function startStatusPolling() {
   refreshServiceStatus();
-  clearInterval(statusPollTimer);
-  statusPollTimer = setInterval(refreshServiceStatus, 8000);
   // クリックで即再確認
   $("#service-status").addEventListener("click", refreshServiceStatus);
 }

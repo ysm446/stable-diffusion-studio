@@ -190,6 +190,36 @@ body {
 
 .svc-chip.is-down .svc-dot { background: #555; }
 
+.svc-chip.is-busy {
+  color: #ffb74d;
+  border-color: rgba(255, 183, 77, 0.5);
+}
+.svc-chip.is-busy .svc-dot {
+  background: #ffb74d;
+  box-shadow: 0 0 5px #ffb74d;
+  animation: svc-pulse 1s ease-in-out infinite;
+}
+
+.svc-chip.is-error {
+  color: #ef5350;
+  border-color: rgba(239, 83, 80, 0.5);
+}
+.svc-chip.is-error .svc-dot {
+  background: #ef5350;
+  box-shadow: 0 0 5px #ef5350;
+}
+
+.svc-state {
+  margin-left: 2px;
+  font-size: 10px;
+  opacity: 0.9;
+}
+
+@keyframes svc-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.35; transform: scale(0.8); }
+}
+
 /* ----------------------------------------------------------------- panes */
 
 .panes {

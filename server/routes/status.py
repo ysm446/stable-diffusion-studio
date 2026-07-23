@@ -14,7 +14,7 @@ from typing import Any
 import requests
 from fastapi import APIRouter
 
-from server.generation import comfy_process, sd_process
+from server.generation import comfy_process, embedding_client, llm_client, sd_process
 
 router = APIRouter(prefix="/api/status")
 
@@ -35,6 +35,28 @@ def _probe_any(urls: list[str], ok_codes=(200,)) -> tuple[bool, str]:
     return False, urls[0] if urls else ""
 
 
+def _resolve_state(
+    ready: bool,
+    proc: dict[str, Any],
+    *,
+    installing: bool = False,
+) -> tuple[str, str]:
+    """(state, detail) を返す。state: ready / starting / installing / error / off"""
+    if ready:
+        return "ready", ""
+    if installing:
+        return "installing", "セットアップ中…"
+    if proc.get("process_running"):
+        return "starting", "起動中…"
+    rc = proc.get("returncode")
+    err = proc.get("error") or ""
+    if rc is not None:
+        return "error", f"異常終了 (code {rc})"
+    if err:
+        return "error", str(err)
+    return "off", ""
+
+
 def _forge_status() -> dict[str, Any]:
     urls = []
     try:
@@ -43,7 +65,8 @@ def _forge_status() -> dict[str, Any]:
         pass
     urls.append("http://127.0.0.1:7860")  # 外部起動でよく使うポート
     ready, url = _probe_any(list(dict.fromkeys(urls)))
-    return {"key": "forge", "label": "Forge", "ready": ready, "url": url}
+    state, detail = _resolve_state(ready, sd_process.process_state())
+    return {"key": "forge", "label": "Forge", "ready": ready, "state": state, "detail": detail, "url": url}
 
 
 def _comfy_status() -> dict[str, Any]:
@@ -52,21 +75,36 @@ def _comfy_status() -> dict[str, Any]:
     except Exception:
         base = "http://127.0.0.1:8188"
     ready = _probe(f"{base}/system_stats")
-    return {"key": "comfyui", "label": "ComfyUI", "ready": ready, "url": base}
+    proc = comfy_process.process_state()
+    state, detail = _resolve_state(ready, proc, installing=proc.get("installing", False))
+    return {"key": "comfyui", "label": "ComfyUI", "ready": ready, "state": state, "detail": detail, "url": base}
 
 
 def _llm_status() -> dict[str, Any]:
     port = os.getenv("LLAMA_SERVER_PORT", "8090")
     base = f"http://127.0.0.1:{port}"
+    # llama-server はモデルロード中 /health が 503 を返すため、200 = ロード完了
     ready = _probe(f"{base}/health")
-    return {"key": "llm", "label": "LLM", "ready": ready, "url": base}
+    proc = llm_client.process_state()
+    state, detail = _resolve_state(ready, proc)
+    if state == "starting":
+        detail = "モデルをロード中…"
+    if ready and proc.get("model"):
+        detail = str(proc["model"])
+    return {"key": "llm", "label": "LLM", "ready": ready, "state": state, "detail": detail, "url": base}
 
 
 def _embedding_status() -> dict[str, Any]:
     port = os.getenv("EMBEDDING_SERVER_PORT", "8091")
     base = f"http://127.0.0.1:{port}"
     ready = _probe(f"{base}/health")
-    return {"key": "embedding", "label": "Embedding", "ready": ready, "url": base}
+    proc = embedding_client.process_state()
+    state, detail = _resolve_state(ready, proc)
+    if state == "starting":
+        detail = "モデルをロード中…"
+    if ready and proc.get("model"):
+        detail = str(proc["model"])
+    return {"key": "embedding", "label": "Embedding", "ready": ready, "state": state, "detail": detail, "url": base}
 
 
 @router.get("")

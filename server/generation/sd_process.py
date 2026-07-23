@@ -108,6 +108,15 @@ def is_process_running() -> bool:
     return _forge_proc is not None and _forge_proc.poll() is None
 
 
+def process_state() -> dict[str, Any]:
+    """ステータスバー向けの軽量な状態。HTTP プローブやロック取得をしない。"""
+    proc = _forge_proc
+    return {
+        "process_running": proc is not None and proc.poll() is None,
+        "returncode": None if proc is None else proc.poll(),
+    }
+
+
 def _is_http_ready() -> bool:
     try:
         resp = requests.get(f"{get_url()}/config", timeout=3)

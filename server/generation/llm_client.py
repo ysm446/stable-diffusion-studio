@@ -227,6 +227,20 @@ def is_loaded() -> bool:
     return True
 
 
+def process_state() -> dict[str, Any]:
+    """ステータスバー向けの軽量な状態。
+
+    load_model 中は _lock が長時間保持されるため、ロックを取らずに読む
+    （モジュール変数の参照だけなので安全）。
+    """
+    proc = _server_proc
+    return {
+        "process_running": proc is not None and proc.poll() is None,
+        "returncode": None if proc is None else proc.poll(),
+        "model": _loaded_model_id,
+    }
+
+
 def get_status() -> dict[str, Any]:
     """ステータスバー向けにローカル LLM のロード状態を返す。"""
     with _lock:

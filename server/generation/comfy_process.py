@@ -82,6 +82,16 @@ def _read_pid() -> int | None:
         return None
 
 
+def process_state() -> dict[str, Any]:
+    """ステータスバー向けの軽量な状態。HTTP プローブやロック取得をしない。"""
+    proc = _comfy_proc
+    return {
+        "process_running": is_process_running(),
+        "installing": _installing,
+        "returncode": None if proc is None else proc.poll(),
+    }
+
+
 def _is_http_ready() -> bool:
     try:
         resp = requests.get(f"{get_url()}/system_stats", timeout=3)
