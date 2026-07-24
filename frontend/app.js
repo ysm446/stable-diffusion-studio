@@ -450,6 +450,16 @@ async function revealFolder(rel) {
   );
 }
 
+$("#btn-folder-new").addEventListener("click", async () => {
+  if (!requireFolder()) return;
+  await createFolderIn(state.folder);
+});
+
+// 選択中のフォルダをエクスプローラーで開く（未選択・ルート選択時はライブラリルート）
+$("#btn-folder-open").addEventListener("click", async () => {
+  await revealFolder(state.folder ?? "");
+});
+
 
 // ---------------------------------------------------------------------------
 // グリッド
