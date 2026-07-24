@@ -846,7 +846,8 @@ textarea.auto-grow {
   color: var(--accent);
 }
 
-/* ツリー・一覧の各行右端の […] メニューボタン（シーケンス一覧・フォルダツリー共用） */
+/* ツリー・一覧の各行右端の […] メニューボタン（シーケンス一覧・フォルダツリー共用）。
+   行にマウスオーバーした時だけ表示する（visibility なので行幅は変わらない） */
 .tree-node .tree-more {
   flex: none;
   padding: 0 4px;
@@ -855,8 +856,10 @@ textarea.auto-grow {
   border: none;
   background: none;
   color: var(--text-dim);
+  visibility: hidden;
 }
 
+.tree-node:hover .tree-more { visibility: visible; }
 .tree-node .tree-more:hover { color: var(--text); }
 
 /* フォルダツリーでは […] を行の右端に寄せる */
