@@ -450,20 +450,6 @@ async function revealFolder(rel) {
   );
 }
 
-$("#btn-folder-new").addEventListener("click", async () => {
-  if (!requireFolder()) return;
-  await createFolderIn(state.folder);
-});
-
-$("#btn-folder-rename").addEventListener("click", async () => {
-  if (!requireFolder()) return;
-  await renameFolderRel(state.folder);
-});
-
-$("#btn-folder-delete").addEventListener("click", async () => {
-  if (!requireFolder()) return;
-  await deleteFolderRel(state.folder);
-});
 
 // ---------------------------------------------------------------------------
 // グリッド

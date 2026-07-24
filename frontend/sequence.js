@@ -1659,17 +1659,6 @@ export function initSequenceView() {
     }
   });
 
-  // 名前の変更・削除は一覧行の […] メニューと同じ処理（選択中のシーケンスが対象）
-  $("#btn-seq-rename").addEventListener("click", () => {
-    if (!seqState.seq) return;
-    renameSequenceItem({ id: seqState.currentId, name: seqState.seq.name });
-  });
-
-  $("#btn-seq-delete").addEventListener("click", () => {
-    if (!seqState.seq) return;
-    deleteSequenceItem({ id: seqState.currentId, name: seqState.seq.name });
-  });
-
   $("#btn-seq-play").addEventListener("click", () => seqState.seq && playSequence());
   $("#seq-play-toggle").addEventListener("click", togglePlay);
   const loopBtn = $("#seq-loop-toggle");

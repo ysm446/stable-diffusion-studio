@@ -5,6 +5,7 @@
  */
 
 import { showInputDialog } from "/frontend/dialog.js";
+import { showContextMenu } from "/frontend/menu.js";
 import { setIconLabel } from "/frontend/icons.js";
 
 const $ = (sel) => document.querySelector(sel);
@@ -181,7 +182,18 @@ function renderFiles() {
     const count = document.createElement("span");
     count.className = "count";
     count.textContent = String(f.count);
-    row.append(label, count);
+    // […] メニュー（右クリックでも同じメニューを表示）
+    const more = document.createElement("button");
+    more.type = "button";
+    more.className = "tree-more";
+    more.title = "メニュー";
+    setIconLabel(more, "ellipsis");
+    more.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const rect = more.getBoundingClientRect();
+      showFileMenu(rect.left, rect.bottom + 2, f.path);
+    });
+    row.append(label, count, more);
     row.addEventListener("click", () => selectFile(f.path));
     row.addEventListener("contextmenu", (e) => {
       e.preventDefault();
@@ -205,48 +217,14 @@ function renderFiles() {
   }
 }
 
-// ファイルの右クリックメニュー ------------------------------------------------
-
-let fileMenuEl = null;
-
-function hideFileMenu() {
-  if (fileMenuEl) {
-    fileMenuEl.remove();
-    fileMenuEl = null;
-  }
-}
+// ファイルの […] / 右クリックメニュー -----------------------------------------
 
 function showFileMenu(x, y, path) {
-  hideFileMenu();
-  const menu = document.createElement("div");
-  menu.className = "context-menu";
-  const entries = [
+  showContextMenu(x, y, [
     { icon: "pencil", label: "名前を変更", action: () => renameFile(path) },
     { icon: "trash", label: "削除", danger: true, action: () => deleteFileByPath(path) },
-  ];
-  for (const entry of entries) {
-    const item = document.createElement("button");
-    item.className = "context-menu-item" + (entry.danger ? " danger" : "");
-    setIconLabel(item, entry.icon, entry.label);
-    item.addEventListener("click", () => {
-      hideFileMenu();
-      entry.action();
-    });
-    menu.appendChild(item);
-  }
-  document.body.appendChild(menu);
-  // 画面からはみ出さない位置に調整
-  const rect = menu.getBoundingClientRect();
-  menu.style.left = `${Math.min(x, window.innerWidth - rect.width - 4)}px`;
-  menu.style.top = `${Math.min(y, window.innerHeight - rect.height - 4)}px`;
-  fileMenuEl = menu;
+  ]);
 }
-
-document.addEventListener("click", hideFileMenu);
-window.addEventListener("blur", hideFileMenu);
-document.addEventListener("keydown", (e) => {
-  if (e.key === "Escape") hideFileMenu();
-});
 
 async function renameFile(path) {
   const base = path.replace(/\.code-snippets$/, "");
