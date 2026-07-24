@@ -869,6 +869,11 @@ textarea.auto-grow {
 #seq-list .tree-node.drop-before { box-shadow: inset 0 2px 0 var(--accent); }
 #seq-list .tree-node.drop-after { box-shadow: inset 0 -2px 0 var(--accent); }
 
+/* シーケンス一覧のフォルダグループ */
+#seq-list .tree-node.seq-in-folder { margin-left: 16px; }
+#seq-list .tree-node.seq-folder .count { margin-left: auto; }
+#seq-list .tree-node.seq-folder .tree-more { margin-left: 4px; }
+
 .seq-time {
   flex: none;
   font-size: 11px;

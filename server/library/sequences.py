@@ -5,6 +5,11 @@
 つなぐ。実体はアイテムフォルダの動画。参照切れ（画像・動画の削除）は解決時に
 ``missing`` フラグで返す。
 
+一覧の整理用に 1 段のフォルダ分けができる。フォルダは表示上のグループで、
+各シーケンス JSON の ``folder`` フィールド（フォルダ名の文字列）で所属を持つ。
+フォルダ自体の一覧と表示順は ``.studio/sequences/folders.json`` に保存する
+（空フォルダを保持するため）。``folder`` なしは「未分類」。
+
 旧形式（``clips`` の線形リスト）は読み込み時に nodes+edges の一本道へ自動移行する。
 """
 
@@ -38,7 +43,7 @@ def _save(seq: dict[str, Any]) -> None:
     tmp.replace(path)
 
 
-def create_sequence(name: str) -> dict[str, Any]:
+def create_sequence(name: str, folder: str = "") -> dict[str, Any]:
     seq = {
         "id": paths.new_item_id(),
         "name": (name or "").strip() or "新しいシーケンス",
@@ -47,8 +52,119 @@ def create_sequence(name: str) -> dict[str, Any]:
         "nodes": [],
         "edges": [],
     }
+    folder = (folder or "").strip()
+    if folder:
+        seq["folder"] = _validate_folder_name(folder)
+        _ensure_folder(seq["folder"])
     _save(seq)
     return seq
+
+
+# フォルダ（1 段のグループ分け） ------------------------------------------------
+
+_FOLDERS_FILE = "folders.json"
+
+
+def _folders_path():
+    return paths.sequences_dir() / _FOLDERS_FILE
+
+
+def _validate_folder_name(name: str) -> str:
+    name = (name or "").strip()
+    if not name:
+        raise SequenceError("フォルダ名を入力してください")
+    if "/" in name or "\\" in name:
+        raise SequenceError("フォルダ名に / や \\ は使えません")
+    return name
+
+
+def list_folders() -> list[str]:
+    path = _folders_path()
+    if not path.is_file():
+        return []
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return []
+    seen = set()
+    out = []
+    for n in data.get("folders") or []:
+        n = str(n).strip()
+        if n and n not in seen:
+            seen.add(n)
+            out.append(n)
+    return out
+
+
+def _save_folders(names: list[str]) -> None:
+    path = _folders_path()
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text(
+        json.dumps({"folders": names}, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+    tmp.replace(path)
+
+
+def _ensure_folder(name: str) -> None:
+    folders = list_folders()
+    if name not in folders:
+        folders.append(name)
+        _save_folders(folders)
+
+
+def create_folder(name: str) -> list[str]:
+    name = _validate_folder_name(name)
+    folders = list_folders()
+    if name in folders:
+        raise SequenceError(f"フォルダ「{name}」は既にあります")
+    folders.append(name)
+    _save_folders(folders)
+    return folders
+
+
+def _reassign_folder(old: str, new: str | None) -> None:
+    """フォルダ old に属する全シーケンスを new へ付け替える（None は未分類へ）。
+
+    整理操作なので updated_at は変更しない。
+    """
+    for path in paths.sequences_dir().glob("*.json"):
+        if path.name == _FOLDERS_FILE:
+            continue
+        try:
+            seq = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if seq.get("folder") != old or "id" not in seq:
+            continue
+        if new:
+            seq["folder"] = new
+        else:
+            seq.pop("folder", None)
+        _save(seq)
+
+
+def rename_folder(old: str, new: str) -> list[str]:
+    new = _validate_folder_name(new)
+    folders = list_folders()
+    if old not in folders:
+        raise SequenceNotFound(f"folder not found: {old!r}")
+    if new == old:
+        return folders
+    if new in folders:
+        raise SequenceError(f"フォルダ「{new}」は既にあります")
+    _save_folders([new if n == old else n for n in folders])
+    _reassign_folder(old, new)
+    return list_folders()
+
+
+def delete_folder(name: str) -> list[str]:
+    """フォルダを削除する。中のシーケンスは削除せず未分類へ戻す。"""
+    folders = list_folders()
+    if name not in folders:
+        raise SequenceNotFound(f"folder not found: {name!r}")
+    _save_folders([n for n in folders if n != name])
+    _reassign_folder(name, None)
+    return list_folders()
 
 
 def _migrate(seq: dict[str, Any]) -> dict[str, Any]:
@@ -110,6 +226,8 @@ def node_order(nodes: list[dict[str, Any]], edges: list[dict[str, Any]]) -> list
 def list_sequences() -> list[dict[str, Any]]:
     result = []
     for path in sorted(paths.sequences_dir().glob("*.json")):
+        if path.name == _FOLDERS_FILE:
+            continue
         try:
             seq = json.loads(path.read_text(encoding="utf-8"))
             n = len(seq.get("nodes") if "nodes" in seq else (seq.get("clips") or []))
@@ -117,6 +235,7 @@ def list_sequences() -> list[dict[str, Any]]:
                 {
                     "id": seq["id"],
                     "name": seq.get("name", ""),
+                    "folder": str(seq.get("folder") or ""),
                     "clip_count": n,
                     "updated_at": seq.get("updated_at"),
                     "sort_order": seq.get("sort_order"),
@@ -203,6 +322,14 @@ def update_sequence(seq_id: str, fields: dict[str, Any]) -> dict[str, Any]:
         name = str(fields["name"]).strip()
         if name:
             seq["name"] = name
+    if "folder" in fields:
+        folder = fields["folder"]
+        if folder is None or str(folder).strip() == "":
+            seq.pop("folder", None)
+        else:
+            folder = _validate_folder_name(str(folder))
+            _ensure_folder(folder)
+            seq["folder"] = folder
     if "bgm" in fields:
         bgm = fields["bgm"]
         if bgm is None or bgm == {}:
@@ -225,7 +352,9 @@ def update_sequence(seq_id: str, fields: dict[str, Any]) -> dict[str, Any]:
         # ノード更新でノードが減った場合、無効な edge を落とす
         node_ids = {n["id"] for n in seq["nodes"]}
         seq["edges"] = _validate_edges(seq.get("edges") or [], node_ids)
-    seq["updated_at"] = now_iso()
+    # フォルダ移動だけなら内容の編集ではないため updated_at は変えない
+    if set(fields) != {"folder"}:
+        seq["updated_at"] = now_iso()
     _save(seq)
     return seq
 

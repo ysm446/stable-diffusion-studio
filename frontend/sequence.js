@@ -37,6 +37,7 @@ const apiJson = (path, method, body) =>
 
 const seqState = {
   list: [],
+  folders: [], // フォルダ名の一覧（表示順）
   currentId: null,
   seq: null, // { id, name, nodes:[resolved], edges:[{src,dst}] }
   videos: [],
@@ -102,71 +103,262 @@ function nodeOrder(nodes, edges) {
 // ---------------------------------------------------------------------------
 
 async function loadList() {
-  seqState.list = (await api("/api/sequences")).sequences;
+  const data = await api("/api/sequences");
+  seqState.list = data.sequences;
+  seqState.folders = data.folders || [];
   renderList();
+}
+
+// 折りたたみ中のフォルダ名。リロード後も保持する。
+const SEQ_FOLDERS_COLLAPSED_KEY = "studio_seq_folders_collapsed";
+let seqFoldersCollapsed;
+try {
+  seqFoldersCollapsed = new Set(
+    JSON.parse(localStorage.getItem(SEQ_FOLDERS_COLLAPSED_KEY) || "[]")
+  );
+} catch {
+  seqFoldersCollapsed = new Set();
+}
+
+function persistSeqFoldersCollapsed() {
+  localStorage.setItem(SEQ_FOLDERS_COLLAPSED_KEY, JSON.stringify([...seqFoldersCollapsed]));
+}
+
+// folders.json の順のフォルダ名一覧。シーケンス側にしか無い所属名も表示に出す
+function seqFolderNames() {
+  const names = [...seqState.folders];
+  for (const s of seqState.list) {
+    if (s.folder && !names.includes(s.folder)) names.push(s.folder);
+  }
+  return names;
+}
+
+// 表示グループ: フォルダ（表示順）→ 未分類（folder なし）の順
+function displayGroups() {
+  const groups = seqFolderNames().map((name) => ({
+    name,
+    items: seqState.list.filter((s) => s.folder === name),
+  }));
+  groups.push({ name: "", items: seqState.list.filter((s) => !s.folder) });
+  return groups;
+}
+
+// 表示順（グループ順に平坦化）のシーケンス ID。reorder API に渡す
+function flatDisplayIds() {
+  return displayGroups().flatMap((g) => g.items.map((s) => s.id));
 }
 
 function renderList() {
   const el = $("#seq-list");
   el.innerHTML = "";
-  if (seqState.list.length === 0) {
+  if (seqState.list.length === 0 && seqState.folders.length === 0) {
     el.innerHTML = '<p class="grid-empty">「＋」で新しいシーケンスを作成</p>';
     return;
   }
-  for (const s of seqState.list) {
-    const row = document.createElement("div");
-    row.className = "tree-node";
-    if (s.id === seqState.currentId) row.classList.add("is-selected");
-    const label = document.createElement("span");
-    setIconLabel(label, "clapper", s.name);
-    const count = document.createElement("span");
-    count.className = "count";
-    count.textContent = String(s.clip_count);
-    // 保存ボタン（行の右端）。編集できるのは選択中のシーケンスだけなので、
-    // 有効になるのは「選択中かつ未保存の変更あり」のときのみ。
-    const save = document.createElement("button");
-    save.type = "button";
-    save.className = "seq-save";
-    save.title = "シーケンスを保存";
-    setIconLabel(save, "save");
-    if (s.id === seqState.currentId) {
-      save.id = "btn-seq-save";
-      save.disabled = !seqState.dirty;
-      save.classList.toggle("is-dirty", !!seqState.dirty);
-      save.addEventListener("click", (e) => {
-        e.stopPropagation();
-        saveSequence();
-      });
+  for (const g of displayGroups()) {
+    if (g.name) {
+      el.appendChild(buildSeqFolderRow(g));
+      if (seqFoldersCollapsed.has(g.name)) continue;
+      for (const s of g.items) el.appendChild(buildSequenceRow(s, true));
     } else {
-      save.disabled = true;
+      for (const s of g.items) el.appendChild(buildSequenceRow(s, false));
     }
-    // […] メニュー（名前の変更・削除）
-    const more = document.createElement("button");
-    more.type = "button";
-    more.className = "tree-more";
-    more.title = "メニュー";
-    setIconLabel(more, "ellipsis");
-    more.addEventListener("click", (e) => {
-      e.stopPropagation();
-      const rect = more.getBoundingClientRect();
-      showSequenceMenu(s, rect.left, rect.bottom + 2);
-    });
-    row.append(label, count, save, more);
-    row.addEventListener("click", () => selectSequence(s.id));
-    row.addEventListener("contextmenu", (e) => {
-      e.preventDefault();
-      showSequenceMenu(s, e.clientX, e.clientY);
-    });
-    setupSequenceRowDrag(row, s);
-    el.appendChild(row);
   }
 }
 
+function buildSequenceRow(s, inFolder) {
+  const row = document.createElement("div");
+  row.className = "tree-node";
+  if (inFolder) row.classList.add("seq-in-folder");
+  if (s.id === seqState.currentId) row.classList.add("is-selected");
+  const label = document.createElement("span");
+  setIconLabel(label, "clapper", s.name);
+  const count = document.createElement("span");
+  count.className = "count";
+  count.textContent = String(s.clip_count);
+  // 保存ボタン（行の右端）。編集できるのは選択中のシーケンスだけなので、
+  // 有効になるのは「選択中かつ未保存の変更あり」のときのみ。
+  const save = document.createElement("button");
+  save.type = "button";
+  save.className = "seq-save";
+  save.title = "シーケンスを保存";
+  setIconLabel(save, "save");
+  if (s.id === seqState.currentId) {
+    save.id = "btn-seq-save";
+    save.disabled = !seqState.dirty;
+    save.classList.toggle("is-dirty", !!seqState.dirty);
+    save.addEventListener("click", (e) => {
+      e.stopPropagation();
+      saveSequence();
+    });
+  } else {
+    save.disabled = true;
+  }
+  // […] メニュー（名前の変更・フォルダへ移動・削除）
+  const more = document.createElement("button");
+  more.type = "button";
+  more.className = "tree-more";
+  more.title = "メニュー";
+  setIconLabel(more, "ellipsis");
+  more.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const rect = more.getBoundingClientRect();
+    showSequenceMenu(s, rect.left, rect.bottom + 2);
+  });
+  row.append(label, count, save, more);
+  row.addEventListener("click", () => selectSequence(s.id));
+  row.addEventListener("contextmenu", (e) => {
+    e.preventDefault();
+    showSequenceMenu(s, e.clientX, e.clientY);
+  });
+  setupSequenceRowDrag(row, s);
+  return row;
+}
+
+function buildSeqFolderRow(g) {
+  const row = document.createElement("div");
+  row.className = "tree-node seq-folder";
+  const collapsed = seqFoldersCollapsed.has(g.name);
+  const toggle = document.createElement("span");
+  toggle.className = "tree-toggle";
+  toggle.innerHTML = iconSvg(collapsed ? "chevron-right" : "chevron-down");
+  const label = document.createElement("span");
+  setIconLabel(label, "folder", g.name);
+  const count = document.createElement("span");
+  count.className = "count";
+  count.textContent = String(g.items.length);
+  const more = document.createElement("button");
+  more.type = "button";
+  more.className = "tree-more";
+  more.title = "メニュー";
+  setIconLabel(more, "ellipsis");
+  more.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const rect = more.getBoundingClientRect();
+    showSeqFolderMenu(g, rect.left, rect.bottom + 2);
+  });
+  row.append(toggle, label, count, more);
+  row.addEventListener("click", () => {
+    if (collapsed) seqFoldersCollapsed.delete(g.name);
+    else seqFoldersCollapsed.add(g.name);
+    persistSeqFoldersCollapsed();
+    renderList();
+  });
+  row.addEventListener("contextmenu", (e) => {
+    e.preventDefault();
+    showSeqFolderMenu(g, e.clientX, e.clientY);
+  });
+  // シーケンス行のドロップ → このフォルダへ移動（末尾に追加）
+  row.addEventListener("dragover", (e) => {
+    if (!seqDragId) return;
+    const dragged = seqState.list.find((x) => x.id === seqDragId);
+    if (!dragged || (dragged.folder || "") === g.name) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    row.classList.add("is-drop-target");
+  });
+  row.addEventListener("dragleave", () => row.classList.remove("is-drop-target"));
+  row.addEventListener("drop", (e) => {
+    e.preventDefault();
+    row.classList.remove("is-drop-target");
+    if (seqDragId) moveSequenceToFolder(seqDragId, g.name);
+  });
+  return row;
+}
+
 function showSequenceMenu(s, x, y) {
-  showContextMenu(x, y, [
+  const entries = [
     { icon: "pencil", label: "名前の変更", action: () => renameSequenceItem(s) },
-    { icon: "trash", label: "削除", danger: true, action: () => deleteSequenceItem(s) },
+  ];
+  const targets = [];
+  if (s.folder) {
+    targets.push({ label: "（未分類）", action: () => moveSequenceToFolder(s.id, "") });
+  }
+  for (const name of seqFolderNames()) {
+    if (name !== s.folder) {
+      targets.push({ icon: "folder", label: name, action: () => moveSequenceToFolder(s.id, name) });
+    }
+  }
+  if (targets.length) {
+    entries.push({
+      icon: "folder",
+      label: "フォルダへ移動",
+      // クリックイベントの伝播で閉じられないよう、次のティックでサブメニューを開く
+      action: () => setTimeout(() => showContextMenu(x, y, targets), 0),
+    });
+  }
+  entries.push({ icon: "trash", label: "削除", danger: true, action: () => deleteSequenceItem(s) });
+  showContextMenu(x, y, entries);
+}
+
+function showSeqFolderMenu(g, x, y) {
+  showContextMenu(x, y, [
+    { icon: "clapper", label: "新規シーケンス（この中に）", action: () => createSequenceIn(g.name) },
+    { icon: "pencil", label: "名前の変更", action: () => renameSeqFolder(g.name) },
+    { icon: "trash", label: "削除", danger: true, action: () => deleteSeqFolder(g) },
   ]);
+}
+
+// シーケンスをフォルダへ移動する（folderName が空文字なら未分類へ）。
+// 移動先グループの末尾に置き、表示順も保存する。
+async function moveSequenceToFolder(id, folderName) {
+  const s = seqState.list.find((x) => x.id === id);
+  if (!s || (s.folder || "") === (folderName || "")) return;
+  s.folder = folderName || "";
+  seqState.list = [...seqState.list.filter((x) => x.id !== id), s];
+  renderList();
+  try {
+    await apiJson(`/api/sequences/${id}`, "PATCH", { folder: s.folder });
+    await apiJson("/api/sequences/reorder", "POST", { order: flatDisplayIds() });
+  } catch (e) {
+    setSeqStatus(e.message, true);
+    await loadList();
+  }
+}
+
+async function createSequenceIn(folderName) {
+  const name = await showInputDialog("シーケンス名:", "新しいシーケンス");
+  if (name === null) return;
+  try {
+    const seq = await apiJson("/api/sequences", "POST", { name, folder: folderName });
+    seqFoldersCollapsed.delete(folderName);
+    persistSeqFoldersCollapsed();
+    await loadList();
+    await selectSequence(seq.id);
+  } catch (e) {
+    setSeqStatus(e.message, true);
+  }
+}
+
+async function renameSeqFolder(oldName) {
+  const name = await showInputDialog("フォルダ名:", oldName);
+  if (!name || name === oldName) return;
+  try {
+    await apiJson(`/api/sequences/folders/${encodeURIComponent(oldName)}`, "PATCH", { name });
+    if (seqFoldersCollapsed.has(oldName)) {
+      seqFoldersCollapsed.delete(oldName);
+      seqFoldersCollapsed.add(name);
+      persistSeqFoldersCollapsed();
+    }
+    await loadList();
+  } catch (e) {
+    setSeqStatus(e.message, true);
+  }
+}
+
+async function deleteSeqFolder(g) {
+  const msg = g.items.length
+    ? `フォルダ「${g.name}」を削除しますか？\n（中の ${g.items.length} 件のシーケンスは未分類に戻ります）`
+    : `フォルダ「${g.name}」を削除しますか？`;
+  if (!confirm(msg)) return;
+  try {
+    await api(`/api/sequences/folders/${encodeURIComponent(g.name)}`, { method: "DELETE" });
+    seqFoldersCollapsed.delete(g.name);
+    persistSeqFoldersCollapsed();
+    await loadList();
+  } catch (e) {
+    setSeqStatus(e.message, true);
+  }
 }
 
 async function renameSequenceItem(s) {
@@ -230,15 +422,22 @@ function setupSequenceRowDrag(row, s) {
     const rect = row.getBoundingClientRect();
     const before = e.clientY < rect.top + rect.height / 2;
     clearSequenceDropMarkers();
-    const ids = seqState.list.map((x) => x.id).filter((id) => id !== seqDragId);
-    const idx = ids.indexOf(s.id) + (before ? 0 : 1);
-    ids.splice(idx, 0, seqDragId);
+    const dragged = seqState.list.find((x) => x.id === seqDragId);
+    if (!dragged) return;
+    // ドロップ先の行と同じフォルダ所属になる（フォルダをまたぐ移動も可）
+    const folderChanged = (dragged.folder || "") !== (s.folder || "");
+    dragged.folder = s.folder || "";
+    const rest = seqState.list.filter((x) => x.id !== dragged.id);
+    const idx = rest.findIndex((x) => x.id === s.id) + (before ? 0 : 1);
+    rest.splice(idx, 0, dragged);
     // 楽観的に並べ替えて即描画し、サーバーに保存
-    const byId = new Map(seqState.list.map((x) => [x.id, x]));
-    seqState.list = ids.map((id) => byId.get(id));
+    seqState.list = rest;
     renderList();
     try {
-      await apiJson("/api/sequences/reorder", "POST", { order: ids });
+      if (folderChanged) {
+        await apiJson(`/api/sequences/${dragged.id}`, "PATCH", { folder: dragged.folder });
+      }
+      await apiJson("/api/sequences/reorder", "POST", { order: flatDisplayIds() });
     } catch (err) {
       setSeqStatus(err.message, true);
       await loadList();
@@ -1654,6 +1853,17 @@ export function initSequenceView() {
       const seq = await apiJson("/api/sequences", "POST", { name });
       await loadList();
       await selectSequence(seq.id);
+    } catch (e) {
+      setSeqStatus(e.message, true);
+    }
+  });
+
+  $("#btn-seq-folder-new").addEventListener("click", async () => {
+    const name = await showInputDialog("フォルダ名:", "");
+    if (!name) return;
+    try {
+      await apiJson("/api/sequences/folders", "POST", { name });
+      await loadList();
     } catch (e) {
       setSeqStatus(e.message, true);
     }

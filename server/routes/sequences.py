@@ -25,10 +25,12 @@ def _wrap(fn, *args, **kwargs):
 
 class SequenceCreate(BaseModel):
     name: str = ""
+    folder: str = ""
 
 
 class SequenceUpdate(BaseModel):
     name: str | None = None
+    folder: str | None = None
     nodes: list[dict[str, Any]] | None = None
     edges: list[dict[str, Any]] | None = None
     bgm: dict[str, Any] | None = None
@@ -38,20 +40,42 @@ class SequenceReorder(BaseModel):
     order: list[str]
 
 
+class FolderName(BaseModel):
+    name: str
+
+
 @router.get("")
 def list_sequences() -> dict[str, Any]:
-    return {"sequences": sequences.list_sequences()}
+    return {
+        "sequences": sequences.list_sequences(),
+        "folders": sequences.list_folders(),
+    }
 
 
 @router.post("")
 def create_sequence(body: SequenceCreate) -> dict[str, Any]:
-    return _wrap(sequences.create_sequence, body.name)
+    return _wrap(sequences.create_sequence, body.name, body.folder)
 
 
 @router.post("/reorder")
 def reorder_sequences(body: SequenceReorder) -> dict[str, bool]:
     _wrap(sequences.reorder_sequences, body.order)
     return {"ok": True}
+
+
+@router.post("/folders")
+def create_folder(body: FolderName) -> dict[str, Any]:
+    return {"folders": _wrap(sequences.create_folder, body.name)}
+
+
+@router.patch("/folders/{name}")
+def rename_folder(name: str, body: FolderName) -> dict[str, Any]:
+    return {"folders": _wrap(sequences.rename_folder, name, body.name)}
+
+
+@router.delete("/folders/{name}")
+def delete_folder(name: str) -> dict[str, Any]:
+    return {"folders": _wrap(sequences.delete_folder, name)}
 
 
 @router.get("/{seq_id}")
