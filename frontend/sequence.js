@@ -143,7 +143,7 @@ function renderList() {
     // […] メニュー（名前の変更・削除）
     const more = document.createElement("button");
     more.type = "button";
-    more.className = "seq-more";
+    more.className = "tree-more";
     more.title = "メニュー";
     setIconLabel(more, "ellipsis");
     more.addEventListener("click", (e) => {

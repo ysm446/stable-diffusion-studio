@@ -220,39 +220,35 @@ function buildTreeList(node, isRoot) {
     row.appendChild(count);
   }
 
+  // […] メニュー（右クリックでも同じメニューを表示）
+  const more = document.createElement("button");
+  more.type = "button";
+  more.className = "tree-more";
+  more.title = "メニュー";
+  setIconLabel(more, "ellipsis");
+  more.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const rect = more.getBoundingClientRect();
+    showFolderMenu(node, isRoot, rect.left, rect.bottom + 2);
+  });
+  row.appendChild(more);
+
   row.addEventListener("click", () => selectFolder(node.rel));
   row.addEventListener("contextmenu", (e) => {
     e.preventDefault();
-    if (state.folder !== node.rel) selectFolder(node.rel);
-    const entries = [
-      {
-        icon: "folder",
-        label: "新規フォルダ（この中に）",
-        action: () => createFolderIn(node.rel),
-      },
-      {
-        icon: "folder-open",
-        label: "エクスプローラーで開く",
-        action: () => revealFolder(node.rel),
-      },
-    ];
-    if (!isRoot) {
-      entries.push(
-        {
-          icon: "pencil",
-          label: "名前の変更",
-          action: () => renameFolderRel(node.rel),
-        },
-        {
-          icon: "trash",
-          label: "削除",
-          danger: true,
-          action: () => deleteFolderRel(node.rel),
-        }
-      );
-    }
-    showContextMenu(e.clientX, e.clientY, entries);
+    showFolderMenu(node, isRoot, e.clientX, e.clientY);
   });
+  // フォルダ自体のドラッグ（別フォルダへの移動）
+  if (!isRoot) {
+    row.draggable = true;
+    row.addEventListener("dragstart", (e) => {
+      folderDragRel = node.rel;
+      e.dataTransfer.effectAllowed = "move";
+      e.dataTransfer.setData("application/x-folder-rel", node.rel);
+      e.dataTransfer.setData("text/plain", node.rel);
+    });
+    row.addEventListener("dragend", () => (folderDragRel = null));
+  }
   setupFolderDrop(row, node.rel);
   li.appendChild(row);
 
@@ -265,9 +261,55 @@ function buildTreeList(node, isRoot) {
   return ul;
 }
 
+function showFolderMenu(node, isRoot, x, y) {
+  if (state.folder !== node.rel) selectFolder(node.rel);
+  const entries = [
+    {
+      icon: "folder",
+      label: "新規フォルダ（この中に）",
+      action: () => createFolderIn(node.rel),
+    },
+    {
+      icon: "folder-open",
+      label: "エクスプローラーで開く",
+      action: () => revealFolder(node.rel),
+    },
+  ];
+  if (!isRoot) {
+    entries.push(
+      {
+        icon: "pencil",
+        label: "名前の変更",
+        action: () => renameFolderRel(node.rel),
+      },
+      {
+        icon: "trash",
+        label: "削除",
+        danger: true,
+        action: () => deleteFolderRel(node.rel),
+      }
+    );
+  }
+  showContextMenu(x, y, entries);
+}
+
+// ドラッグ中のフォルダ rel（dragover ではデータを読めないためモジュール変数で持つ）
+let folderDragRel = null;
+
+// src フォルダを dest フォルダの中へ移動できるか（自分自身・子孫・現在の親は不可）
+function folderMoveOk(src, dest) {
+  if (!src) return false;
+  const parent = src.split("/").slice(0, -1).join("/");
+  return dest !== src && !dest.startsWith(src + "/") && dest !== parent;
+}
+
 function setupFolderDrop(row, rel) {
   row.addEventListener("dragover", (e) => {
-    if (e.dataTransfer.types.includes("application/x-item-id")) {
+    const types = e.dataTransfer.types;
+    if (
+      types.includes("application/x-item-id") ||
+      (types.includes("application/x-folder-rel") && folderMoveOk(folderDragRel, rel))
+    ) {
       e.preventDefault();
       row.classList.add("is-drop-target");
     }
@@ -276,6 +318,24 @@ function setupFolderDrop(row, rel) {
   row.addEventListener("drop", async (e) => {
     e.preventDefault();
     row.classList.remove("is-drop-target");
+    // フォルダのドロップ → このフォルダの中へ移動
+    const srcFolder = e.dataTransfer.getData("application/x-folder-rel");
+    if (srcFolder) {
+      if (!folderMoveOk(srcFolder, rel)) return;
+      await run(async () => {
+        const res = await apiJson("/api/library/folders/move", "POST", {
+          rel: srcFolder,
+          dest_parent: rel,
+        });
+        // 選択中のフォルダが移動対象（またはその中）なら新しいパスへ追従
+        if (state.folder === srcFolder || state.folder?.startsWith(srcFolder + "/")) {
+          state.folder = res.rel + state.folder.slice(srcFolder.length);
+          updateHash();
+        }
+        await refresh();
+      }, "フォルダを移動しました");
+      return;
+    }
     let ids = [];
     try {
       ids = JSON.parse(e.dataTransfer.getData("application/x-item-ids") || "[]");
