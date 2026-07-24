@@ -846,6 +846,23 @@ textarea.auto-grow {
   color: var(--accent);
 }
 
+/* シーケンス一覧の各行右端の […] メニューボタン */
+.tree-node .seq-more {
+  flex: none;
+  padding: 0 4px;
+  font-size: 11px;
+  line-height: 18px;
+  border: none;
+  background: none;
+  color: var(--text-dim);
+}
+
+.tree-node .seq-more:hover { color: var(--text); }
+
+/* ドラッグ並べ替えの挿入位置マーカー */
+#seq-list .tree-node.drop-before { box-shadow: inset 0 2px 0 var(--accent); }
+#seq-list .tree-node.drop-after { box-shadow: inset 0 -2px 0 var(--accent); }
+
 .seq-time {
   flex: none;
   font-size: 11px;

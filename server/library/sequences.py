@@ -119,12 +119,32 @@ def list_sequences() -> list[dict[str, Any]]:
                     "name": seq.get("name", ""),
                     "clip_count": n,
                     "updated_at": seq.get("updated_at"),
+                    "sort_order": seq.get("sort_order"),
                 }
             )
         except (OSError, ValueError, KeyError):
             continue
-    result.sort(key=lambda s: s.get("updated_at") or "", reverse=True)
-    return result
+    # 手動並べ替え済み（sort_order あり）はその順、未設定（新規作成直後など）は
+    # 更新日時の新しい順で先頭に置く
+    fresh = [s for s in result if s.get("sort_order") is None]
+    ordered = [s for s in result if s.get("sort_order") is not None]
+    fresh.sort(key=lambda s: s.get("updated_at") or "", reverse=True)
+    ordered.sort(key=lambda s: s["sort_order"])
+    return fresh + ordered
+
+
+def reorder_sequences(ids: list[str]) -> None:
+    """一覧の表示順を保存する。ids は表示順（上から下）のシーケンス ID。
+
+    updated_at は変更しない（並べ替えは内容の編集ではないため）。
+    """
+    for i, seq_id in enumerate(ids):
+        try:
+            seq = get_sequence(seq_id)
+        except SequenceNotFound:
+            continue
+        seq["sort_order"] = i
+        _save(seq)
 
 
 def get_sequence(seq_id: str) -> dict[str, Any]:

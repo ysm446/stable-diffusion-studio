@@ -34,6 +34,10 @@ class SequenceUpdate(BaseModel):
     bgm: dict[str, Any] | None = None
 
 
+class SequenceReorder(BaseModel):
+    order: list[str]
+
+
 @router.get("")
 def list_sequences() -> dict[str, Any]:
     return {"sequences": sequences.list_sequences()}
@@ -42,6 +46,12 @@ def list_sequences() -> dict[str, Any]:
 @router.post("")
 def create_sequence(body: SequenceCreate) -> dict[str, Any]:
     return _wrap(sequences.create_sequence, body.name)
+
+
+@router.post("/reorder")
+def reorder_sequences(body: SequenceReorder) -> dict[str, bool]:
+    _wrap(sequences.reorder_sequences, body.order)
+    return {"ok": True}
 
 
 @router.get("/{seq_id}")

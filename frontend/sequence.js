@@ -7,6 +7,7 @@
  */
 
 import { showInputDialog } from "/frontend/dialog.js";
+import { showContextMenu } from "/frontend/menu.js";
 import { iconSvg, setIconLabel } from "/frontend/icons.js";
 
 const $ = (sel) => document.querySelector(sel);
@@ -139,9 +140,115 @@ function renderList() {
     } else {
       save.disabled = true;
     }
-    row.append(label, count, save);
+    // […] メニュー（名前の変更・削除）
+    const more = document.createElement("button");
+    more.type = "button";
+    more.className = "seq-more";
+    more.title = "メニュー";
+    setIconLabel(more, "ellipsis");
+    more.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const rect = more.getBoundingClientRect();
+      showSequenceMenu(s, rect.left, rect.bottom + 2);
+    });
+    row.append(label, count, save, more);
     row.addEventListener("click", () => selectSequence(s.id));
+    row.addEventListener("contextmenu", (e) => {
+      e.preventDefault();
+      showSequenceMenu(s, e.clientX, e.clientY);
+    });
+    setupSequenceRowDrag(row, s);
     el.appendChild(row);
+  }
+}
+
+function showSequenceMenu(s, x, y) {
+  showContextMenu(x, y, [
+    { icon: "pencil", label: "名前の変更", action: () => renameSequenceItem(s) },
+    { icon: "trash", label: "削除", danger: true, action: () => deleteSequenceItem(s) },
+  ]);
+}
+
+async function renameSequenceItem(s) {
+  const name = await showInputDialog("シーケンス名:", s.name);
+  if (!name || name === s.name) return;
+  try {
+    await apiJson(`/api/sequences/${s.id}`, "PATCH", { name });
+    if (s.id === seqState.currentId && seqState.seq) seqState.seq.name = name;
+    await loadList();
+  } catch (e) {
+    setSeqStatus(e.message, true);
+  }
+}
+
+async function deleteSequenceItem(s) {
+  if (!confirm(`シーケンス「${s.name}」を削除しますか？\n（動画ファイル自体は削除されません）`)) return;
+  try {
+    await api(`/api/sequences/${s.id}`, { method: "DELETE" });
+    if (s.id === seqState.currentId) {
+      stopPlayback();
+      seqState.currentId = null;
+      seqState.seq = null;
+      seqState.dirty = false;
+      renderGraph();
+      updateSaveButton();
+    }
+    await loadList();
+  } catch (e) {
+    setSeqStatus(e.message, true);
+  }
+}
+
+// 一覧のドラッグ並べ替え -------------------------------------------------------
+
+let seqDragId = null;
+
+function setupSequenceRowDrag(row, s) {
+  row.draggable = true;
+  row.addEventListener("dragstart", (e) => {
+    seqDragId = s.id;
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/plain", s.id);
+  });
+  row.addEventListener("dragend", () => {
+    seqDragId = null;
+    clearSequenceDropMarkers();
+  });
+  row.addEventListener("dragover", (e) => {
+    if (!seqDragId || seqDragId === s.id) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    const rect = row.getBoundingClientRect();
+    const before = e.clientY < rect.top + rect.height / 2;
+    row.classList.toggle("drop-before", before);
+    row.classList.toggle("drop-after", !before);
+  });
+  row.addEventListener("dragleave", () => row.classList.remove("drop-before", "drop-after"));
+  row.addEventListener("drop", async (e) => {
+    if (!seqDragId || seqDragId === s.id) return;
+    e.preventDefault();
+    const rect = row.getBoundingClientRect();
+    const before = e.clientY < rect.top + rect.height / 2;
+    clearSequenceDropMarkers();
+    const ids = seqState.list.map((x) => x.id).filter((id) => id !== seqDragId);
+    const idx = ids.indexOf(s.id) + (before ? 0 : 1);
+    ids.splice(idx, 0, seqDragId);
+    // 楽観的に並べ替えて即描画し、サーバーに保存
+    const byId = new Map(seqState.list.map((x) => [x.id, x]));
+    seqState.list = ids.map((id) => byId.get(id));
+    renderList();
+    try {
+      await apiJson("/api/sequences/reorder", "POST", { order: ids });
+    } catch (err) {
+      setSeqStatus(err.message, true);
+      await loadList();
+    }
+  });
+}
+
+function clearSequenceDropMarkers() {
+  for (const n of document.querySelectorAll("#seq-list .drop-before, #seq-list .drop-after")) {
+    n.classList.remove("drop-before", "drop-after");
   }
 }
 
@@ -1552,35 +1659,15 @@ export function initSequenceView() {
     }
   });
 
-  $("#btn-seq-rename").addEventListener("click", async () => {
+  // 名前の変更・削除は一覧行の […] メニューと同じ処理（選択中のシーケンスが対象）
+  $("#btn-seq-rename").addEventListener("click", () => {
     if (!seqState.seq) return;
-    const name = await showInputDialog("シーケンス名:", seqState.seq.name);
-    if (!name || name === seqState.seq.name) return;
-    // 名前だけ即時保存（グラフには触れないので未保存の編集は保持される）
-    seqState.seq.name = name;
-    try {
-      await apiJson(`/api/sequences/${seqState.currentId}`, "PATCH", { name });
-      await loadList();
-    } catch (e) {
-      setSeqStatus(e.message, true);
-    }
+    renameSequenceItem({ id: seqState.currentId, name: seqState.seq.name });
   });
 
-  $("#btn-seq-delete").addEventListener("click", async () => {
+  $("#btn-seq-delete").addEventListener("click", () => {
     if (!seqState.seq) return;
-    if (!confirm(`シーケンス「${seqState.seq.name}」を削除しますか？\n（動画ファイル自体は削除されません）`)) return;
-    try {
-      await api(`/api/sequences/${seqState.currentId}`, { method: "DELETE" });
-      stopPlayback();
-      seqState.currentId = null;
-      seqState.seq = null;
-      seqState.dirty = false;
-      await loadList();
-      renderGraph();
-      updateSaveButton();
-    } catch (e) {
-      setSeqStatus(e.message, true);
-    }
+    deleteSequenceItem({ id: seqState.currentId, name: seqState.seq.name });
   });
 
   $("#btn-seq-play").addEventListener("click", () => seqState.seq && playSequence());
