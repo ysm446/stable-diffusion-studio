@@ -170,6 +170,19 @@ function renderTree() {
   container.appendChild(buildTreeList(state.tree, true));
 }
 
+// 折りたたみ中のフォルダ（rel のセット）。リロード後も保持する。
+const TREE_COLLAPSED_KEY = "studio_tree_collapsed";
+let treeCollapsed;
+try {
+  treeCollapsed = new Set(JSON.parse(localStorage.getItem(TREE_COLLAPSED_KEY) || "[]"));
+} catch {
+  treeCollapsed = new Set();
+}
+
+function persistTreeCollapsed() {
+  localStorage.setItem(TREE_COLLAPSED_KEY, JSON.stringify([...treeCollapsed]));
+}
+
 function buildTreeList(node, isRoot) {
   const ul = document.createElement("ul");
   const li = document.createElement("li");
@@ -177,6 +190,22 @@ function buildTreeList(node, isRoot) {
   row.className = "tree-node";
   row.dataset.rel = node.rel;
   if (state.folder === node.rel) row.classList.add("is-selected");
+
+  const hasChildren = node.children && node.children.length > 0;
+  const collapsed = treeCollapsed.has(node.rel);
+
+  const toggle = document.createElement("span");
+  toggle.className = "tree-toggle";
+  toggle.innerHTML = hasChildren ? iconSvg(collapsed ? "chevron-right" : "chevron-down") : "";
+  toggle.addEventListener("click", (e) => {
+    e.stopPropagation();
+    if (!hasChildren) return;
+    if (collapsed) treeCollapsed.delete(node.rel);
+    else treeCollapsed.add(node.rel);
+    persistTreeCollapsed();
+    renderTree();
+  });
+  row.appendChild(toggle);
 
   const label = document.createElement("span");
   setIconLabel(label, isRoot ? "library" : "folder", isRoot ? rootName() : node.name);
@@ -226,8 +255,10 @@ function buildTreeList(node, isRoot) {
   setupFolderDrop(row, node.rel);
   li.appendChild(row);
 
-  for (const child of node.children) {
-    li.appendChild(buildTreeList(child, false));
+  if (!collapsed) {
+    for (const child of node.children) {
+      li.appendChild(buildTreeList(child, false));
+    }
   }
   ul.appendChild(li);
   return ul;
@@ -377,6 +408,10 @@ $("#btn-folder-delete").addEventListener("click", async () => {
 // グリッド
 // ---------------------------------------------------------------------------
 
+// グリッドの表示順（"desc" = 新しい→古い / "asc" = 古い→新しい）。リロード後も保持する。
+const SORT_ORDER_KEY = "studio_sort_order";
+let sortOrder = localStorage.getItem(SORT_ORDER_KEY) === "asc" ? "asc" : "desc";
+
 async function loadItems() {
   if (state.folder === null) {
     state.items = [];
@@ -390,6 +425,8 @@ async function loadItems() {
   }
   const res = await api(`/api/library/items?${params}`);
   state.items = res.items;
+  // 検索結果は関連度順なので反転しない
+  if (sortOrder === "asc" && !state.query) state.items.reverse();
   if (res.note) setStatus(res.note, true);
   renderGrid();
 }
@@ -1054,8 +1091,10 @@ async function reorderItems(draggedIds, targetId, after) {
   const byId = new Map(state.items.map((it) => [it.id, it]));
   state.items = ids.map((id) => byId.get(id));
   renderGrid();
+  // サーバーの sort_order は先頭が最新（降順）。昇順表示中は逆順で送る
+  const order = sortOrder === "asc" ? [...ids].reverse() : ids;
   await run(() =>
-    apiJson("/api/library/items/reorder", "POST", { folder: state.folder, order: ids })
+    apiJson("/api/library/items/reorder", "POST", { folder: state.folder, order })
   );
 }
 
@@ -1830,9 +1869,6 @@ function renderVideoGenContext(el, item) {
     }
     g._loadedFor = item.id;
   }
-  el.appendChild(
-    labeled("ワークフロー", makeSelect(state.options.video_workflows, g.workflow, (v) => (g.workflow = v)))
-  );
   if (!g.workflow && state.options.video_workflows.length > 0) {
     g.workflow = state.options.video_workflows[0];
   }
@@ -1843,6 +1879,9 @@ function renderVideoGenContext(el, item) {
   );
   el.appendChild(buildLlmPromptBox(item.id, g, promptField, (t) => (g.prompt = t)));
   el.appendChild(labeled("動画プロンプト", promptField));
+  el.appendChild(
+    labeled("ワークフロー", makeSelect(state.options.video_workflows, g.workflow, (v) => (g.workflow = v)))
+  );
 
   const row = document.createElement("div");
   row.className = "row";
@@ -2701,6 +2740,22 @@ $("#btn-queue-close").addEventListener("click", () => {
 $("#btn-queue-clear").addEventListener("click", () => {
   state.queue = state.queue.filter((j) => j.status === "pending" || j.status === "running");
   updateQueueUI();
+});
+
+// 表示順の切り替え（設定パネル）
+function updateSortOrderButton() {
+  setIconLabel(
+    $("#btn-sort-order"),
+    "sort",
+    sortOrder === "desc" ? "新しい→古い" : "古い→新しい"
+  );
+}
+updateSortOrderButton();
+$("#btn-sort-order").addEventListener("click", async () => {
+  sortOrder = sortOrder === "desc" ? "asc" : "desc";
+  localStorage.setItem(SORT_ORDER_KEY, sortOrder);
+  updateSortOrderButton();
+  await run(loadItems);
 });
 
 $("#btn-reindex").addEventListener("click", async () => {

@@ -392,6 +392,19 @@ body {
   white-space: nowrap;
 }
 
+.tree-node .tree-toggle {
+  width: 12px;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  color: var(--text-dim);
+}
+
+.tree-node .tree-toggle .ico {
+  width: 12px;
+  height: 12px;
+}
+
 .tree-node:hover { background: var(--bg-hover); }
 .tree-node.is-selected { background: var(--bg-active); }
 .tree-node.is-drop-target { outline: 1px dashed var(--accent); }
@@ -1067,7 +1080,25 @@ textarea.auto-grow {
 .seq-bgm-head { font-size: 12px; color: var(--accent); }
 .seq-bgm-select { display: flex; }
 .seq-bgm-select select { flex: 1; }
-.seq-bgm input[type="range"] { width: 100%; accent-color: var(--accent); }
+.seq-bgm input[type="range"] {
+  width: 100%;
+  height: 14px;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.seq-bgm-volume {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.seq-bgm-volume-icon {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  color: var(--text-dim);
+}
 
 .seq-bgm-drop {
   border: 1px dashed var(--border);

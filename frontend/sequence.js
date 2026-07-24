@@ -1175,7 +1175,14 @@ function renderBgm() {
     row.appendChild(sel);
     el.appendChild(row);
 
-    // 音量
+    // 音量（スピーカーアイコン + スライダー）
+    const volRow = document.createElement("div");
+    volRow.className = "seq-bgm-volume";
+    volRow.title = "BGM 音量";
+    const volIcon = document.createElement("span");
+    volIcon.className = "seq-bgm-volume-icon";
+    volIcon.innerHTML = iconSvg("volume");
+    volRow.appendChild(volIcon);
     const vol = document.createElement("input");
     vol.type = "range";
     vol.min = "0";
@@ -1190,7 +1197,8 @@ function renderBgm() {
     vol.addEventListener("change", () => {
       if (seqState.seq?.bgm) setSequenceBgm(seqState.seq.bgm.file, parseFloat(vol.value));
     });
-    el.appendChild(vol);
+    volRow.appendChild(vol);
+    el.appendChild(volRow);
   }
 
   // BGM ファイル一覧（ドロップで追加・削除）
