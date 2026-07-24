@@ -165,7 +165,12 @@ async function loadTree() {
   renderTree();
 }
 
+// renderTree 中に参照する新着フォルダのセット（毎回計算し直す）
+let treeNewSets = { img: new Set(), vid: new Set() };
+
 function renderTree() {
+  if (!state.tree) return;
+  treeNewSets = newFolderSets();
   const container = $("#tree");
   container.innerHTML = "";
   container.appendChild(buildTreeList(state.tree, true));
@@ -212,6 +217,18 @@ function buildTreeList(node, isRoot) {
   setIconLabel(label, isRoot ? "library" : "folder", isRoot ? rootName() : node.name);
   if (isRoot) label.title = state.rootInfo?.root || "";
   row.appendChild(label);
+
+  // 新着（未確認の生成画像・動画）を含むフォルダの NEW バッジ（配下フォルダの分も含む）。
+  // 画像 NEW はアクセント青、動画のみなら琥珀色（グリッドの NEW と同じ使い分け）
+  const hasNewImg = folderHasNew(treeNewSets.img, node.rel);
+  const hasNewVid = folderHasNew(treeNewSets.vid, node.rel);
+  if (hasNewImg || hasNewVid) {
+    const nb = document.createElement("span");
+    nb.className = "tree-new-badge" + (!hasNewImg && hasNewVid ? " video" : "");
+    if (!hasNewImg && hasNewVid) setIconLabel(nb, "film", "NEW");
+    else nb.textContent = "NEW";
+    row.appendChild(nb);
+  }
 
   if (node.item_count > 0) {
     const count = document.createElement("span");
@@ -332,6 +349,7 @@ function setupFolderDrop(row, rel) {
           state.folder = res.rel + state.folder.slice(srcFolder.length);
           updateHash();
         }
+        remapNewFolders(srcFolder, res.rel);
         await refresh();
       }, "フォルダを移動しました");
       return;
@@ -353,6 +371,7 @@ function setupFolderDrop(row, rel) {
     await run(async () => {
       for (const itemId of ids) {
         await apiJson(`/api/library/items/${itemId}/move`, "POST", { folder: rel });
+        setNewItemFolder(itemId, rel); // NEW アイテムなら移動先へバッジも追従
       }
       if (ids.includes(state.selectedId)) state.selectedId = null;
       ids.forEach((itemId) => state.selectedIds.delete(itemId));
@@ -422,6 +441,7 @@ async function renameFolderRel(rel) {
       rel,
       new_name: name,
     });
+    remapNewFolders(rel, res.rel);
     await loadTree();
     await selectFolder(res.rel);
   }, "リネームしました");
@@ -438,6 +458,10 @@ async function deleteFolderRel(rel) {
       `/api/library/folders?rel=${encodeURIComponent(rel)}&recursive=true`,
       { method: "DELETE" }
     );
+    // 削除したフォルダ配下の NEW の控えも消す
+    for (const [id, f] of Object.entries(newItemFolders)) {
+      if (f === rel || f.startsWith(rel + "/")) clearNewForItem(id);
+    }
     await loadTree();
     await selectFolder(rel.split("/").slice(0, -1).join("/"));
   }, "フォルダを削除しました");
@@ -485,14 +509,22 @@ async function loadItems() {
   // 検索結果は関連度順なので反転しない
   if (sortOrder === "asc" && !state.query) state.items.reverse();
   if (res.note) setStatus(res.note, true);
+  // NEW アイテムの所属フォルダの控えを実データで補正（旧データや別経路の移動を自己修復）
+  let foldersChanged = false;
+  for (const it of state.items) {
+    if (setNewItemFolder(it.id, it.folder)) foldersChanged = true;
+  }
+  if (foldersChanged) renderTree();
   renderGrid();
 }
 
 // 新規生成されてまだクリックされていないもの（NEW バッジ表示用）。
 // 画像はアイテム ID、動画は「アイテムID/videos/vNNN.mp4」をキーに、
 // リロード・再起動後も保持し、クリックしたら解除する。
+// 所属フォルダ（id → rel）も控えて、フォルダツリーの NEW 表示に使う。
 const NEW_ITEMS_KEY = "studio_new_item_ids";
 const NEW_VIDEOS_KEY = "studio_new_video_ids";
+const NEW_FOLDERS_KEY = "studio_new_item_folders";
 
 function loadNewSet(key) {
   try {
@@ -510,23 +542,63 @@ function persistNewSet(key, set) {
 const newItemIds = loadNewSet(NEW_ITEMS_KEY);
 const newVideoIds = loadNewSet(NEW_VIDEOS_KEY);
 
-function markItemNew(id) {
+let newItemFolders;
+try {
+  newItemFolders = JSON.parse(localStorage.getItem(NEW_FOLDERS_KEY) || "{}") || {};
+} catch {
+  newItemFolders = {};
+}
+
+function persistNewFolders() {
+  localStorage.setItem(NEW_FOLDERS_KEY, JSON.stringify(newItemFolders));
+}
+
+// 新着アイテムの所属フォルダを控える（NEW でないアイテムは対象外）。変化があれば true
+function setNewItemFolder(id, folder) {
+  if (typeof folder !== "string") return false;
+  if (!newItemIds.has(id) && !hasNewVideo(id)) return false;
+  if (newItemFolders[id] === folder) return false;
+  newItemFolders[id] = folder;
+  persistNewFolders();
+  return true;
+}
+
+// id が NEW でなくなっていたら所属フォルダの控えも消す
+function pruneNewFolder(id) {
+  if (newItemIds.has(id) || hasNewVideo(id)) return;
+  if (id in newItemFolders) {
+    delete newItemFolders[id];
+    persistNewFolders();
+  }
+}
+
+function markItemNew(id, folder) {
   newItemIds.add(id);
   persistNewSet(NEW_ITEMS_KEY, newItemIds);
+  setNewItemFolder(id, folder);
 }
 
 function markItemSeen(id) {
-  if (newItemIds.delete(id)) persistNewSet(NEW_ITEMS_KEY, newItemIds);
+  if (newItemIds.delete(id)) {
+    persistNewSet(NEW_ITEMS_KEY, newItemIds);
+    pruneNewFolder(id);
+    renderTree();
+  }
 }
 
-function markVideoNew(itemId, file) {
+function markVideoNew(itemId, file, folder) {
   newVideoIds.add(`${itemId}/${file}`);
   persistNewSet(NEW_VIDEOS_KEY, newVideoIds);
+  setNewItemFolder(itemId, folder);
 }
 
 function markVideoSeen(itemId, file) {
   const removed = newVideoIds.delete(`${itemId}/${file}`);
-  if (removed) persistNewSet(NEW_VIDEOS_KEY, newVideoIds);
+  if (removed) {
+    persistNewSet(NEW_VIDEOS_KEY, newVideoIds);
+    pruneNewFolder(itemId);
+    renderTree();
+  }
   return removed;
 }
 
@@ -550,7 +622,61 @@ function pruneNewVideos(item) {
       changed = true;
     }
   }
-  if (changed) persistNewSet(NEW_VIDEOS_KEY, newVideoIds);
+  if (changed) {
+    persistNewSet(NEW_VIDEOS_KEY, newVideoIds);
+    pruneNewFolder(item.id);
+    renderTree();
+  }
+}
+
+// アイテム削除時: NEW 状態と所属フォルダの控えをまとめて消す
+function clearNewForItem(id) {
+  if (newItemIds.delete(id)) persistNewSet(NEW_ITEMS_KEY, newItemIds);
+  let videosChanged = false;
+  for (const key of [...newVideoIds]) {
+    if (key.startsWith(`${id}/`)) {
+      newVideoIds.delete(key);
+      videosChanged = true;
+    }
+  }
+  if (videosChanged) persistNewSet(NEW_VIDEOS_KEY, newVideoIds);
+  pruneNewFolder(id);
+}
+
+// フォルダ rel ごとの新着の有無（img: 新規画像 / vid: 未確認の新規動画）
+function newFolderSets() {
+  const img = new Set();
+  const vid = new Set();
+  for (const id of newItemIds) {
+    const f = newItemFolders[id];
+    if (typeof f === "string") img.add(f);
+  }
+  for (const key of newVideoIds) {
+    const f = newItemFolders[key.split("/")[0]];
+    if (typeof f === "string") vid.add(f);
+  }
+  return { img, vid };
+}
+
+// rel またはその配下のフォルダに新着があるか（rel="" はルート = 全体）
+function folderHasNew(set, rel) {
+  if (rel === "") return set.size > 0;
+  for (const f of set) {
+    if (f === rel || f.startsWith(rel + "/")) return true;
+  }
+  return false;
+}
+
+// フォルダの移動・リネームで rel が変わったとき、配下の新着の控えを追従させる
+function remapNewFolders(oldRel, newRel) {
+  let changed = false;
+  for (const [id, f] of Object.entries(newItemFolders)) {
+    if (f === oldRel || f.startsWith(oldRel + "/")) {
+      newItemFolders[id] = newRel + f.slice(oldRel.length);
+      changed = true;
+    }
+  }
+  if (changed) persistNewFolders();
 }
 
 // NEW バッジ。video=true は動画由来（琥珀色・🎞 付き）
@@ -755,6 +881,7 @@ async function bulkDelete(ids) {
   if (!confirm(`選択した ${ids.length} 件の画像を削除しますか？${warn}`)) return;
   await run(async () => {
     const res = await apiJson("/api/library/items/delete", "POST", { ids });
+    ids.forEach(clearNewForItem);
     state.selectedIds = new Set();
     state.selectedId = null;
     state.currentItem = null;
@@ -881,6 +1008,7 @@ async function deleteItemById(itemId, videoCount = 0) {
   if (!confirm(`この画像を削除しますか？${warn}`)) return;
   await run(async () => {
     await api(`/api/library/items/${itemId}`, { method: "DELETE" });
+    clearNewForItem(itemId);
     if (state.selectedId === itemId) state.selectedId = null;
     state.selectedIds.delete(itemId);
     await refresh();
@@ -1756,7 +1884,7 @@ async function runImageJob(job) {
   });
   if (err) throw new Error(err);
   job.message = status;
-  if (result) markItemNew(result.id);
+  if (result) markItemNew(result.id, result.folder ?? job.folder);
   if (result && result.seed !== null && result.seed !== undefined) {
     state.lastImageSeed = result.seed;
   }
@@ -1789,7 +1917,7 @@ async function runVideoJob(job) {
   job.message = status;
   // 追加された動画（videos の末尾）に NEW を付ける
   if (result?.videos?.length) {
-    markVideoNew(job.itemId, result.videos[result.videos.length - 1].file);
+    markVideoNew(job.itemId, result.videos[result.videos.length - 1].file, result.folder);
   }
   // ランダム指定（-1）でも、サーバーが記録した実際の seed を復元用に控える
   const usedSeed = result?.video_settings?.seed;

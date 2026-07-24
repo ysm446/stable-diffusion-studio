@@ -1,7 +1,7 @@
 # Progress
 
 作成日時: 2026-05-19 23:05
-更新日時: 2026-07-23 00:00
+更新日時: 2026-07-24 16:25
 
 このファイルは、完了した作業、確認したこと、残っている注意点を共有するための進捗管理ドキュメントです。
 
@@ -184,6 +184,39 @@ Image Assistant は、初期の Gradio / A1111 想定から、Electron UI + Fast
   自分自身を検出して「folder already exists」になっていた。`samefile` で同一フォルダと
   判定できた場合のみリネームを許可（別フォルダとの衝突は従来通りエラー）。
   一時ライブラリでの動作確認と `tests/test_library_core.py` 通過を確認。
+
+### シーケンス一覧のフォルダ分け（2026-07-24）
+
+- シーケンス一覧を 1 段のフォルダで整理できるようにした。フォルダは表示上のグループで、
+  各シーケンス JSON の `folder` フィールド（フォルダ名）で所属を持ち、フォルダの一覧と
+  表示順は `.studio/sequences/folders.json` に保存する（空フォルダの保持のため）。
+  `folder` なしは「未分類」として一覧の末尾に表示する。
+- API: `GET /api/sequences` の応答に `folders` を追加、`POST/PATCH/DELETE
+  /api/sequences/folders(/{name})` を追加、`PATCH /api/sequences/{id}` の `folder` で移動
+  （folder のみの更新は updated_at を変えない）。フォルダ削除時は中のシーケンスを未分類へ戻す。
+- フロント: フォルダ行の開閉（localStorage `studio_seq_folders_collapsed` に保持）、
+  ツールバーの「新規フォルダ」ボタン、行の […] メニューに「フォルダへ移動」を追加。
+  シーケンスのドラッグはフォルダ行へのドロップ（移動）とフォルダをまたぐ並べ替えに対応。
+  並び順は表示順（フォルダ順に平坦化した ID 列）を既存の reorder API で保存する。
+- 検証: `tests/test_sequences.py` 通過、一時ライブラリでのフォルダ CRUD・移動・
+  日本語フォルダ名の API 動作確認、`node --check frontend/sequence.js` 通過。
+  フォルダのドラッグ並べ替え（フォルダ自体の順序変更）は未実装（folders.json の並びに
+  依存。必要になったら追加する）。
+
+### フォルダツリーの NEW バッジ（2026-07-24）
+
+- ライブラリの左のフォルダツリーに、未確認の新規画像・動画を含むフォルダの NEW バッジを
+  追加した（新規画像=青、新規動画のみ=琥珀・フィルムアイコン。親フォルダにもロールアップ表示）。
+- 実装はフロントのみ。既存の localStorage の NEW 管理（`studio_new_item_ids` /
+  `studio_new_video_ids`）に加えて、新着アイテムの所属フォルダの控え
+  `studio_new_item_folders`（id → rel）を追加し、renderTree 時にフォルダ rel の
+  前方一致で判定する。
+- 控えの整合性: 生成時に folder を記録、アイテムのドラッグ移動・フォルダの移動/リネームで
+  追従、アイテム/フォルダ削除でクリア、loadItems 時に実データで自己修復（旧データも
+  一覧を開けば直る）。NEW 解除（クリック）時は renderTree してバッジを即時反映。
+- 検証: `node --check frontend/app.js`、テスト用サーバー＋ヘッドレス Chrome で
+  localStorage を仕込んだスクリーンショットにより画像 NEW（青）・動画 NEW（琥珀）の
+  両表示とルートへのロールアップを確認。フロントのみの変更のため Ctrl+R で反映可能。
 
 ## 確認済みの補足
 

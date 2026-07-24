@@ -616,6 +616,32 @@ body {
   color: #3a2510;
 }
 
+/* フォルダツリーの NEW バッジ（新着を含むフォルダ。配下フォルダの分も含む） */
+.tree-node .tree-new-badge {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  background: var(--accent);
+  color: #0d2530;
+  border-radius: 4px;
+  padding: 0 4px;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  line-height: 14px;
+}
+
+.tree-node .tree-new-badge.video {
+  background: #ffb74d;
+  color: #3a2510;
+}
+
+.tree-node .tree-new-badge .ico {
+  width: 10px;
+  height: 10px;
+}
+
 /* --------------------------------------------------------------- context */
 
 .context {
